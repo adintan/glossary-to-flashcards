@@ -366,153 +366,177 @@
         }
 
         // Add this function to parse glossary text into flashcards
-        function parseFlashcards() {
-            const text = extractedText.value;
-            const lines = text.split('\n').filter(line => line.trim() !== '');
-            
-            let html = '<div id="flashcardReview" style="margin-top: 20px; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">';
-            html += '<h3 style="margin-top: 0; color: #333;">📋 Review Extracted Glossary</h3>';
-            html += '<p style="color: #666; margin-bottom: 20px;">Each entry should have a term and definition. Adjust if needed:</p>';
-            
-            let entries = [];
-            let currentEntry = null;
-            let i = 0;
-            
-            while (i < lines.length) {
-                const line = lines[i].trim();
+            function parseFlashcards() {
+                const text = extractedText.value;
+                const lines = text.split('\n').filter(line => line.trim() !== '');
                 
-                // Skip empty lines
-                if (line === '') {
-                    i++;
-                    continue;
-                }
+                let html = '<div id="flashcardReview" style="margin-top: 20px; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">';
+                html += '<h3 style="margin-top: 0; color: #333;">📋 Review Extracted Glossary</h3>';
+                html += '<p style="color: #666; margin-bottom: 20px;">I found ' + lines.length + ' lines of text. Grouping them into entries...</p>';
                 
-                // Check if this line looks like a TERM:
-                // 1. Starts with capital letter
-                // 2. Not too long (terms are usually short)
-                // 3. Doesn't end with punctuation that suggests it's a definition
-                const startsWithCapital = /^[A-Z]/.test(line);
-                const isShort = line.length < 60;
-                const endsWithDefinitionPunctuation = line.endsWith('.') || line.endsWith('!') || line.endsWith('?');
-                const hasColonOrDash = line.includes(':') || line.includes('-') || line.includes('—');
+                let entries = [];
+                let currentEntry = null;
+                let i = 0;
                 
-                // Strong term signals
-                const isTerm = startsWithCapital && 
-                              isShort && 
-                              !endsWithDefinitionPunctuation &&
-                              // If it has colon/dash, the part before it is likely the term
-                              (hasColonOrDash || !line.includes(' ')); // Single word terms
+                // First, remove line numbers from the beginning of lines
+                const cleanLines = lines.map(line => {
+                    // Remove leading numbers like "19 " or "19:" or "19)"
+                    return line.replace(/^\d+[\s:.)-]*/, '').trim();
+                }).filter(line => line.length > 0);
                 
-                // Even stronger: line is ALL CAPS or Title Case with no definition punctuation
-                const isAllCaps = /^[A-Z\s]+$/.test(line.replace(/[^A-Z\s]/g, ''));
-                const isTitleCase = /^[A-Z][a-z]+(\s+[A-Z][a-z]+)*$/.test(line);
-                
-                if (isAllCaps || isTitleCase || isTerm) {
-                    // Save previous entry
-                    if (currentEntry && (currentEntry.term || currentEntry.definition.length > 0)) {
-                        entries.push(currentEntry);
-                    }
+                // Reset and process cleaned lines
+                i = 0;
+                while (i < cleanLines.length) {
+                    const line = cleanLines[i];
                     
-                    // Does this line contain a term AND definition? (e.g., "absolute zero - A temperature...")
-                    const separatorMatch = line.match(/^(.+?)\s*[-–—:]\s*(.+)$/);
+                    // Look for common term patterns
+                    const isBoldTerm = line.match(/^(?:[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)$/); // Title case words
+                    const isAllCapsTerm = line.match(/^[A-Z\s]{3,}$/); // ALL CAPS
+                    const hasColonOrDash = line.includes(':') || line.includes('-') || line.includes('—');
+                    const isShort = line.length < 40;
                     
-                    if (separatorMatch) {
-                        // Line has both term and definition
+                    // Check if this line contains a term at the beginning followed by definition
+                    const termAtStart = line.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+([a-z].+)$/);
+                    
+                    if (termAtStart) {
+                        // Line has term at start (like "activity The number of nuclei...")
+                        if (currentEntry) entries.push(currentEntry);
+                        
                         currentEntry = {
-                            term: separatorMatch[1].trim(),
-                            definition: [separatorMatch[2].trim()]
+                            term: termAtStart[1],
+                            definition: [termAtStart[2]]
                         };
-                    } else {
-                        // Line is just the term
+                        i++;
+                    }
+                    else if (isBoldTerm || isAllCapsTerm || (isShort && line.match(/^[A-Z]/))) {
+                        // This line is likely a term
+                        if (currentEntry) entries.push(currentEntry);
+                        
                         currentEntry = {
                             term: line,
                             definition: []
                         };
-                    }
-                    i++;
-                } 
-                // This line might be a definition (starts with lowercase or continues from previous)
-                else if (currentEntry) {
-                    // Add to current definition
-                    currentEntry.definition.push(line);
-                    i++;
-                    
-                    // Look ahead: if next line starts with capital AND is short, it might be a new term
-                    // so we'll stop collecting definition
-                    if (i < lines.length) {
-                        const nextLine = lines[i].trim();
-                        const nextStartsWithCapital = /^[A-Z]/.test(nextLine);
-                        const nextIsShort = nextLine.length < 50;
+                        i++;
                         
-                        if (nextStartsWithCapital && nextIsShort && !nextLine.endsWith('.')) {
-                            // Next line looks like a term, so current definition is complete
-                            continue;
+                        // Collect following lines as definition until we hit another term
+                        while (i < cleanLines.length) {
+                            const nextLine = cleanLines[i];
+                            
+                            // Stop if next line looks like a new term
+                            const nextIsTerm = (
+                                nextLine.match(/^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*$/) || // Title case
+                                nextLine.match(/^[A-Z\s]{3,}$/) || // ALL CAPS
+                                (nextLine.length < 40 && nextLine.match(/^[A-Z]/))
+                            );
+                            
+                            if (nextIsTerm) break;
+                            
+                            currentEntry.definition.push(nextLine);
+                            i++;
                         }
                     }
+                    else if (hasColonOrDash) {
+                        // Line might have term: definition format
+                        const parts = line.split(/[:–—-]\s*/);
+                        if (parts.length >= 2) {
+                            if (currentEntry) entries.push(currentEntry);
+                            
+                            currentEntry = {
+                                term: parts[0].trim(),
+                                definition: [parts.slice(1).join(': ').trim()]
+                            };
+                            i++;
+                        } else {
+                            // Just add to current entry if exists
+                            if (currentEntry) {
+                                currentEntry.definition.push(line);
+                            } else {
+                                currentEntry = { term: line, definition: [] };
+                            }
+                            i++;
+                        }
+                    }
+                    else {
+                        // Default: add to current entry or create new
+                        if (currentEntry) {
+                            currentEntry.definition.push(line);
+                        } else {
+                            currentEntry = { term: line, definition: [] };
+                        }
+                        i++;
+                    }
                 }
-                else {
-                    // No current entry - treat as term (user can fix)
-                    currentEntry = {
-                        term: line,
-                        definition: []
-                    };
-                    i++;
+                
+                // Don't forget the last entry
+                if (currentEntry) {
+                    entries.push(currentEntry);
                 }
-            }
-            
-            // Don't forget the last entry
-            if (currentEntry && (currentEntry.term || currentEntry.definition.length > 0)) {
-                entries.push(currentEntry);
-            }
-            
-            // If we still have no entries, create one per line
-            if (entries.length === 0) {
-                entries = lines.map(line => ({
-                    term: line,
-                    definition: []
-                }));
-            }
-            
-            // Render each entry (same as before)
-            entries.forEach((entry, index) => {
-                const termId = `term-${index}`;
-                const defId = `def-${index}`;
-                const definitionText = Array.isArray(entry.definition) ? entry.definition.join('\n') : entry.definition;
+                
+                // If we got too many entries, maybe we need to merge them
+                if (entries.length > lines.length / 2) {
+                    // Try to merge consecutive short entries
+                    const mergedEntries = [];
+                    for (let j = 0; j < entries.length; j++) {
+                        if (mergedEntries.length === 0) {
+                            mergedEntries.push(entries[j]);
+                        } else {
+                            const last = mergedEntries[mergedEntries.length - 1];
+                            const current = entries[j];
+                            
+                            // If last entry has no definition and current has no term, merge
+                            if (last.definition.length === 0 && current.term && !current.definition.length) {
+                                last.definition.push(current.term);
+                            } else {
+                                mergedEntries.push(current);
+                            }
+                        }
+                    }
+                    entries = mergedEntries;
+                }
+                
+                // Render each entry
+                entries.forEach((entry, index) => {
+                    const termId = `term-${index}`;
+                    const defId = `def-${index}`;
+                    const definitionText = Array.isArray(entry.definition) ? entry.definition.join('\n') : entry.definition;
+                    
+                    html += `
+                        <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin: 15px 0;">
+                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                <span style="background: #007bff; color: white; width: 28px; height: 28px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-right: 10px; font-weight: bold;">${index + 1}</span>
+                                <strong style="min-width: 60px;">Term:</strong>
+                                <input type="text" id="${termId}" value="${entry.term}" style="flex-grow: 1; padding: 8px 12px; border: 2px solid #007bff; border-radius: 4px; font-size: 14px; margin-left: 10px;">
+                            </div>
+                            <div style="display: flex; align-items: flex-start;">
+                                <strong style="min-width: 60px; margin-top: 8px;">Definition:</strong>
+                                <textarea id="${defId}" style="flex-grow: 1; padding: 8px 12px; border: 2px solid #28a745; border-radius: 4px; min-height: 80px; font-size: 14px; margin-left: 10px; font-family: inherit;" placeholder="Enter definition here...">${definitionText}</textarea>
+                            </div>
+                        </div>
+                    `;
+                });
                 
                 html += `
-                    <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin: 15px 0;">
-                        <div style="display: flex; align-items: center; margin-bottom: 10px;">
-                            <span style="background: #007bff; color: white; width: 28px; height: 28px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-right: 10px; font-weight: bold;">${index + 1}</span>
-                            <strong style="min-width: 60px;">Term:</strong>
-                            <input type="text" id="${termId}" value="${entry.term}" style="flex-grow: 1; padding: 8px 12px; border: 2px solid #007bff; border-radius: 4px; font-size: 14px; margin-left: 10px;">
-                        </div>
-                        <div style="display: flex; align-items: flex-start;">
-                            <strong style="min-width: 60px; margin-top: 8px;">Definition:</strong>
-                            <textarea id="${defId}" style="flex-grow: 1; padding: 8px 12px; border: 2px solid #28a745; border-radius: 4px; min-height: 80px; font-size: 14px; margin-left: 10px; font-family: inherit;" placeholder="Enter definition here...">${definitionText}</textarea>
-                        </div>
+                    <div style="margin: 30px 0 20px; display: flex; gap: 15px; justify-content: center;">
+                        <button onclick="generateFromReviewedEntries()" style="background: #28a745; color: white; border: none; padding: 12px 30px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                            ✅ Generate Flashcards
+                        </button>
+                        <button onclick="resetReview()" style="background: #dc3545; color: white; border: none; padding: 12px 30px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                            ↺ Start Over
+                        </button>
                     </div>
+                    <p style="text-align: center; color: #666; font-size: 12px; margin-top: 10px;">
+                        Found ${entries.length} potential entries. You can merge lines by copying text between boxes.
+                    </p>
                 `;
-            });
-            
-            html += `
-                <div style="margin: 30px 0 20px; display: flex; gap: 15px; justify-content: center;">
-                    <button onclick="generateFromReviewedEntries()" style="background: #28a745; color: white; border: none; padding: 12px 30px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px;">
-                        ✅ Generate Flashcards
-                    </button>
-                    <button onclick="resetReview()" style="background: #dc3545; color: white; border: none; padding: 12px 30px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px;">
-                        ↺ Start Over
-                    </button>
-                </div>
-            `;
-            html += '</div>';
-            
-            // Remove any existing review display
-            const existing = document.getElementById('flashcardReview');
-            if (existing) existing.remove();
-            
-            // Insert after the extracted text area
-            document.getElementById('result').insertAdjacentHTML('beforeend', html);
-        }
+                html += '</div>';
+                
+                // Remove any existing review display
+                const existing = document.getElementById('flashcardReview');
+                if (existing) existing.remove();
+                
+                // Insert after the extracted text area
+                document.getElementById('result').insertAdjacentHTML('beforeend', html);
+            }
         
         function generateFromReviewedEntries() {
             const flashcards = [];

@@ -409,16 +409,95 @@
         
         function parseFlashcards() {
             const text = extractedText.value;
-            const lines = text.split('\n').filter(line => line.trim() !== '');
+            const rawLines = text.split('\n').filter(line => line.trim() !== '');
             
-            // Detect format and parse
+            // Step 1: Preprocess lines to fix OCR splitting
+            const lines = preprocessLines(rawLines);
+            
+            // Step 2: Detect format and parse
             const entries = smartParse(lines);
             
             // Display for editing
             displayEntriesForEditing(entries);
         }
         
+        // Preprocess lines to merge broken terms
+        function preprocessLines(lines) {
+            const merged = [];
+            let i = 0;
+            
+            while (i < lines.length) {
+                let currentLine = lines[i].trim();
+                
+                // Case 1: Line starts with ## (markdown header)
+                if (currentLine.startsWith('##')) {
+                    let mergedLine = currentLine;
+                    i++;
+                    
+                    // Keep adding lines that are likely part of the same header
+                    while (i < lines.length) {
+                        const nextLine = lines[i].trim();
+                        
+                        // Stop if we hit another ##
+                        if (nextLine.startsWith('##')) break;
+                        
+                        // Stop if next line looks like a definition (long, ends with punctuation)
+                        if (nextLine.length > 60 || nextLine.match(/[.!?]$/)) break;
+                        
+                        // Otherwise, it's probably part of the header
+                        mergedLine += ' ' + nextLine;
+                        i++;
+                    }
+                    merged.push(mergedLine);
+                }
+                
+                // Case 2: Line looks like a term (short, capitalized) and might be split
+                else if (currentLine.length < 40 && /^[A-Z]/.test(currentLine) && !currentLine.match(/[.!?]$/)) {
+                    let mergedLine = currentLine;
+                    i++;
+                    
+                    // Look ahead for more parts of the same term
+                    while (i < lines.length) {
+                        const nextLine = lines[i].trim();
+                        
+                        // Stop conditions:
+                        // - Next line starts with ##
+                        if (nextLine.startsWith('##')) break;
+                        
+                        // - Next line is long (likely definition)
+                        if (nextLine.length > 50) break;
+                        
+                        // - Next line ends with punctuation (likely definition)
+                        if (nextLine.match(/[.!?]$/)) break;
+                        
+                        // - Next line looks like a new term (short, capitalized)
+                        if (nextLine.length < 40 && /^[A-Z]/.test(nextLine) && i < lines.length - 1) {
+                            // Check if the line after is long (definition)
+                            if (i + 1 < lines.length && lines[i + 1].length > 50) {
+                                break;
+                            }
+                        }
+                        
+                        // If we get here, this line is probably part of the term
+                        mergedLine += ' ' + nextLine;
+                        i++;
+                    }
+                    merged.push(mergedLine);
+                }
+                
+                // Case 3: Regular line - keep as is
+                else {
+                    merged.push(currentLine);
+                    i++;
+                }
+            }
+            
+            return merged;
+        }
+        
         function smartParse(lines) {
+            // Try each format in order of specificity
+            
             // Strategy 0: Markdown headers (## Term)
             const entries0 = parseMarkdownFormat(lines);
             if (entries0.length > 0) {
@@ -435,33 +514,37 @@
             // Strategy 3: Term: definition format
             const entries3 = parseColonFormat(lines);
             
+            // Strategy 4: Try parsing as separate lines but with better detection
+            const entries4 = parseSmartSeparateLineFormat(lines);
+            
             // Choose the strategy that found the most complete entries
-            const scores = [
-                { entries: entries1, name: 'separate line' },
-                { entries: entries2, name: 'same line' },
-                { entries: entries3, name: 'colon' }
+            const strategies = [
+                { entries: entries1, name: 'separate line', score: entries1.length },
+                { entries: entries2, name: 'same line', score: entries2.length },
+                { entries: entries3, name: 'colon', score: entries3.length },
+                { entries: entries4, name: 'smart separate', score: entries4.length }
             ];
             
             // Sort by number of entries (most first)
-            scores.sort((a, b) => b.entries.length - a.entries.length);
+            strategies.sort((a, b) => b.score - a.score);
             
-            if (scores[0].entries.length > 0) {
-                console.log(`Using ${scores[0].name} format (${scores[0].entries.length} entries)`);
-                return scores[0].entries;
+            if (strategies[0].score > 0) {
+                console.log(`Using ${strategies[0].name} format (${strategies[0].score} entries)`);
+                return strategies[0].entries;
             }
             
             // Fallback: create one entry per paragraph
             return createFallbackEntries(lines);
         }
 
-        // NEW: Parse markdown-style headers (## Term)
+        // Parse markdown-style headers (## Term)
         function parseMarkdownFormat(lines) {
             const entries = [];
             let currentTerm = null;
             let currentDefinition = [];
             
             for (let i = 0; i < lines.length; i++) {
-                const line = lines[i].trim();
+                let line = lines[i].trim();
                 
                 // Check if this line is a markdown header (starts with ##)
                 if (line.startsWith('##')) {
@@ -479,6 +562,22 @@
                 }
                 // If this line is not a header and we have a current term, add to definition
                 else if (currentTerm && line.length > 0) {
+                    // Check if this line might actually be a new term without ##
+                    if (line.length < 50 && /^[A-Z]/.test(line) && !line.match(/[.!?]$/)) {
+                        // Look ahead to see if next line is a definition
+                        if (i + 1 < lines.length && lines[i + 1].length > 50) {
+                            // This is a new term! Save previous and start new
+                            if (currentTerm && currentDefinition.length > 0) {
+                                entries.push({
+                                    term: currentTerm,
+                                    definition: currentDefinition.join(' ').trim()
+                                });
+                            }
+                            currentTerm = line;
+                            currentDefinition = [];
+                            continue;
+                        }
+                    }
                     currentDefinition.push(line);
                 }
             }
@@ -599,6 +698,50 @@
                             term: parts[0].trim(),
                             definition: parts.slice(1).join(' - ').trim()
                         });
+                    }
+                }
+            }
+            
+            return entries;
+        }
+        
+        // Smart separate line format
+        function parseSmartSeparateLineFormat(lines) {
+            const entries = [];
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                
+                // Check if this line looks like a term
+                if (line.length < 50 && /^[A-Z]/.test(line) && !line.match(/[.!?]$/)) {
+                    const term = line;
+                    let definition = '';
+                    
+                    // Collect following lines
+                    i++;
+                    while (i < lines.length) {
+                        const nextLine = lines[i].trim();
+                        
+                        // Stop if next line looks like a new term
+                        if (nextLine.length < 50 && /^[A-Z]/.test(nextLine) && !nextLine.match(/[.!?]$/)) {
+                            // Check if this is actually a continuation (no definition yet)
+                            if (definition.length === 0) {
+                                // This might be part of the term that got split
+                                definition = nextLine;
+                                i++;
+                                continue;
+                            } else {
+                                i--;
+                                break;
+                            }
+                        }
+                        
+                        definition += (definition ? ' ' : '') + nextLine;
+                        i++;
+                    }
+                    
+                    if (term && definition) {
+                        entries.push({ term, definition });
                     }
                 }
             }
@@ -829,79 +972,4 @@
             if (!window.currentFlashcards) return;
             let csv = 'Term,Definition\n';
             window.currentFlashcards.forEach(card => {
-                csv += `"${card.term.replace(/"/g, '""')}","${card.definition.replace(/"/g, '""')}"\n`;
-            });
-            downloadFile(csv, 'flashcards.csv', 'text/csv');
-        }
-        
-        function copyFlashcardsToClipboard() {
-            if (!window.currentFlashcards) return;
-            let text = '';
-            window.currentFlashcards.forEach(card => {
-                text += `${card.term}: ${card.definition}\n\n`;
-            });
-            navigator.clipboard.writeText(text).then(() => {
-                showStatus('Flashcards copied to clipboard!', 'success');
-            });
-        }
-        
-        function downloadFile(content, filename, type) {
-            const blob = new Blob([content], { type });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            a.click();
-            URL.revokeObjectURL(url);
-        }
-        
-        // Generate shareable study link
-        function generateStudyLink() {
-            if (!window.currentFlashcards || window.currentFlashcards.length === 0) return;
-            
-            const oldLink = document.getElementById('shareLinkSection');
-            if (oldLink) oldLink.remove();
-            
-            const flashcardData = encodeURIComponent(JSON.stringify(window.currentFlashcards));
-            const yourUsername = 'adintan';
-            const studyUrl = `https://${yourUsername}.github.io/glossary-to-flashcards/study.html?set=${flashcardData}`;
-            
-            const linkHtml = `
-                <div id="shareLinkSection" style="margin-top: 20px; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; color: white;">
-                    <h4 style="margin: 0 0 10px 0;">📱 Share with Students</h4>
-                    <p style="margin: 0 0 15px 0; opacity: 0.9; font-size: 14px;">Students can study instantly - no account needed!</p>
-                    
-                    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                        <input type="text" id="studyLink" value="${studyUrl}" readonly style="flex-grow: 1; padding: 12px; border: none; border-radius: 8px; font-size: 14px; color: #333;">
-                        <button onclick="copyStudyLink()" style="background: white; color: #667eea; border: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; cursor: pointer;">Copy Link</button>
-                    </div>
-                    
-                    <p style="margin: 0; font-size: 12px; opacity: 0.8; text-align: center;">
-                        ✨ Students can study without creating accounts!
-                    </p>
-                </div>
-            `;
-            
-            document.getElementById('finalFlashcards').insertAdjacentHTML('beforeend', linkHtml);
-        }
-        
-        function copyStudyLink() {
-            const linkInput = document.getElementById('studyLink');
-            linkInput.select();
-            document.execCommand('copy');
-            
-            const btn = event.target;
-            const originalText = btn.textContent;
-            btn.textContent = 'Copied! ✓';
-            btn.style.background = '#28a745';
-            btn.style.color = 'white';
-            
-            setTimeout(() => {
-                btn.textContent = originalText;
-                btn.style.background = 'white';
-                btn.style.color = '#667eea';
-            }, 2000);
-        }
-    </script>
-</body>
-</html>
+                csv += `"${card.term.replace(/"/g, '""')}

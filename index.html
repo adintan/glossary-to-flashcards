@@ -487,82 +487,31 @@
 
         function parseFlashcards() {
             const text = extractedText.value;
-            const entries = [];
-            
-            // Split by blank lines (double newline)
-            const paragraphs = text.split('\n\n').filter(p => p.trim() !== '');
+            const lines = text.split('\n').filter(line => line.trim() !== '');
             
             let html = '<div id="flashcardReview" style="margin-top: 20px; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">';
             html += '<h3 style="margin-top: 0; color: #333;">📋 Review Extracted Glossary</h3>';
-            html += '<p style="color: #28a745; margin-bottom: 20px;">✅ Found ' + paragraphs.length + ' glossary entries!</p>';
             
-            paragraphs.forEach((paragraph, index) => {
-                // Split into lines
-                const lines = paragraph.split('\n').filter(l => l.trim() !== '');
-                if (lines.length === 0) return;
-                
-                // The first line contains the term and the beginning of definition
-                const firstLine = lines[0].trim();
-                
-                // Find the term - it's the FIRST WORD (or first few words for multi-word terms)
-                // Based on your glossary, terms can be:
-                // - One word: absorb, acceleration, accuracy, activity, aim
-                // - Two words: absolute zero, air resistance, alpha particle, alternating current
-                // - Three words: absorbed dose
-                
-                // Look for common multi-word terms from your glossary
-                let term = '';
-                let definitionStart = '';
-                
-                // Check for multi-word terms first
-                const multiWordTerms = [
-                    'absolute zero',
-                    'air resistance', 
-                    'alpha particle',
-                    'alternating current',
-                    'absorbed dose'
-                ];
-                
-                let foundMultiWord = false;
-                for (let multiTerm of multiWordTerms) {
-                    if (firstLine.startsWith(multiTerm)) {
-                        term = multiTerm;
-                        definitionStart = firstLine.substring(multiTerm.length).trim();
-                        foundMultiWord = true;
-                        break;
-                    }
-                }
-                
-                if (!foundMultiWord) {
-                    // Single word term - take first word
-                    const firstSpace = firstLine.indexOf(' ');
-                    if (firstSpace > 0) {
-                        term = firstLine.substring(0, firstSpace);
-                        definitionStart = firstLine.substring(firstSpace + 1).trim();
-                    } else {
-                        term = firstLine;
-                        definitionStart = '';
-                    }
-                }
-                
-                // Collect the full definition
-                let definitionLines = [definitionStart];
-                
-                // Add any remaining lines (for multi-line definitions)
-                for (let i = 1; i < lines.length; i++) {
-                    definitionLines.push(lines[i].trim());
-                }
-                
-                // Join all definition parts
-                let definition = definitionLines.join(' ').replace(/\s+/g, ' ').trim();
-                
-                // Store the entry
-                entries.push({
-                    term: term,
-                    definition: definition
-                });
-                
-                // Add to HTML
+            // STEP 1: Detect the glossary format
+            const format = detectGlossaryFormat(lines);
+            html += `<p style="color: #28a745; margin-bottom: 20px;">📊 Detected format: <strong>${format}</strong></p>`;
+            
+            // STEP 2: Parse based on detected format
+            let entries = [];
+            
+            if (format === 'term-on-same-line') {
+                entries = parseSameLineFormat(lines);
+            } else if (format === 'term-on-separate-line') {
+                entries = parseSeparateLineFormat(lines);
+            } else if (format === 'term-with-colon') {
+                entries = parseColonFormat(lines);
+            } else {
+                // Hybrid approach - try both
+                entries = parseHybrid(lines);
+            }
+            
+            // STEP 3: Render entries for editing
+            entries.forEach((entry, index) => {
                 const termId = `term-${index}`;
                 const defId = `def-${index}`;
                 
@@ -571,11 +520,11 @@
                         <div style="display: flex; align-items: center; margin-bottom: 10px;">
                             <span style="background: #007bff; color: white; width: 28px; height: 28px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-right: 10px; font-weight: bold;">${index + 1}</span>
                             <strong style="min-width: 60px;">Term:</strong>
-                            <input type="text" id="${termId}" value="${term}" style="flex-grow: 1; padding: 8px 12px; border: 2px solid #007bff; border-radius: 4px; font-size: 14px; margin-left: 10px;">
+                            <input type="text" id="${termId}" value="${entry.term}" style="flex-grow: 1; padding: 8px 12px; border: 2px solid #007bff; border-radius: 4px; font-size: 14px; margin-left: 10px;">
                         </div>
                         <div style="display: flex; align-items: flex-start;">
                             <strong style="min-width: 60px; margin-top: 8px;">Definition:</strong>
-                            <textarea id="${defId}" style="flex-grow: 1; padding: 8px 12px; border: 2px solid #28a745; border-radius: 4px; min-height: 100px; font-size: 14px; margin-left: 10px; font-family: inherit;" placeholder="Enter definition here...">${definition}</textarea>
+                            <textarea id="${defId}" style="flex-grow: 1; padding: 8px 12px; border: 2px solid #28a745; border-radius: 4px; min-height: 80px; font-size: 14px; margin-left: 10px; font-family: inherit;">${entry.definition}</textarea>
                         </div>
                     </div>
                 `;
@@ -586,21 +535,162 @@
                     <button onclick="generateFromReviewedEntries()" style="background: #28a745; color: white; border: none; padding: 12px 30px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer;">✅ Generate Flashcards (${entries.length} entries)</button>
                     <button onclick="resetReview()" style="background: #dc3545; color: white; border: none; padding: 12px 30px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer;">↺ Start Over</button>
                 </div>
-                <p style="text-align: center; color: #666; font-size: 12px;">
-                    Pattern detected: Term at start of each paragraph, followed by definition
-                </p>
             `;
             html += '</div>';
             
-            // Store entries for later use
-            window.currentParsedEntries = entries;
-            
-            // Remove any existing review display
             const existing = document.getElementById('flashcardReview');
             if (existing) existing.remove();
             
-            // Insert after the extracted text area
             document.getElementById('result').insertAdjacentHTML('beforeend', html);
+        }
+        
+        // STEP 1: Detect the format
+        function detectGlossaryFormat(lines) {
+            let sameLineCount = 0;
+            let separateLineCount = 0;
+            let colonCount = 0;
+            
+            for (let i = 0; i < Math.min(10, lines.length); i++) {
+                const line = lines[i];
+                
+                // Check for colon format
+                if (line.includes(':') || line.includes('-')) {
+                    colonCount++;
+                }
+                
+                // Check if this line might be a term with definition on same line
+                if (line.length > 20 && /^[A-Z]/.test(line) && line.includes(' ')) {
+                    sameLineCount++;
+                }
+                
+                // Check if this line might be a term alone (short, capitalized)
+                if (line.length < 30 && /^[A-Z]/.test(line) && i < lines.length - 1) {
+                    const nextLine = lines[i + 1];
+                    if (nextLine && nextLine.length > 20 && /^[a-z]/.test(nextLine)) {
+                        separateLineCount++;
+                    }
+                }
+            }
+            
+            console.log('Format detection:', { sameLineCount, separateLineCount, colonCount });
+            
+            if (colonCount > sameLineCount && colonCount > separateLineCount) {
+                return 'term-with-colon';
+            } else if (separateLineCount > sameLineCount) {
+                return 'term-on-separate-line';
+            } else {
+                return 'term-on-same-line';
+            }
+        }
+        
+        // Format 1: Term and definition on same line (Glossary 1)
+        function parseSameLineFormat(lines) {
+            const entries = [];
+            let currentEntry = null;
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                
+                // Check if this line starts a new entry (starts with capital, not too long)
+                if (/^[A-Z]/.test(line) && line.length < 60) {
+                    if (currentEntry) entries.push(currentEntry);
+                    
+                    // Split into term and definition
+                    const firstSpace = line.indexOf(' ');
+                    if (firstSpace > 0) {
+                        const term = line.substring(0, firstSpace);
+                        const definition = line.substring(firstSpace + 1);
+                        currentEntry = { term, definition };
+                    } else {
+                        currentEntry = { term: line, definition: '' };
+                    }
+                } else if (currentEntry) {
+                    // Add to current definition
+                    currentEntry.definition += ' ' + line;
+                }
+            }
+            
+            if (currentEntry) entries.push(currentEntry);
+            return entries;
+        }
+        
+        // Format 2: Term alone on line, definition follows (Glossary 2)
+        function parseSeparateLineFormat(lines) {
+            const entries = [];
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                
+                // Check if this line looks like a term (short, capitalized, not ending with punctuation)
+                if (line.length < 40 && /^[A-Z]/.test(line) && !line.match(/[.!?]$/)) {
+                    const term = line;
+                    let definition = '';
+                    
+                    // Collect following lines until next term
+                    i++;
+                    while (i < lines.length) {
+                        const nextLine = lines[i].trim();
+                        
+                        // Stop if next line looks like a new term
+                        if (nextLine.length < 40 && /^[A-Z]/.test(nextLine) && !nextLine.match(/[.!?]$/)) {
+                            i--; // Step back so this line is processed as term next iteration
+                            break;
+                        }
+                        
+                        definition += (definition ? ' ' : '') + nextLine;
+                        i++;
+                    }
+                    
+                    entries.push({ term, definition });
+                }
+            }
+            
+            return entries;
+        }
+        
+        // Format 3: Term: definition format
+        function parseColonFormat(lines) {
+            const entries = [];
+            
+            for (let line of lines) {
+                if (line.includes(':') || line.includes('-')) {
+                    const parts = line.split(/[:–—-]\s*/);
+                    if (parts.length >= 2) {
+                        entries.push({
+                            term: parts[0].trim(),
+                            definition: parts.slice(1).join(': ').trim()
+                        });
+                    }
+                }
+            }
+            
+            return entries;
+        }
+        
+        // Hybrid: Try multiple strategies and pick best
+        function parseHybrid(lines) {
+            // Try separate line format first (common in textbooks)
+            let entries = parseSeparateLineFormat(lines);
+            if (entries.length >= 3) return entries;
+            
+            // Try same line format
+            entries = parseSameLineFormat(lines);
+            if (entries.length >= 3) return entries;
+            
+            // Try colon format
+            entries = parseColonFormat(lines);
+            if (entries.length >= 3) return entries;
+            
+            // If all else fails, create one entry per paragraph
+            const text = lines.join('\n');
+            const paragraphs = text.split('\n\n').filter(p => p.trim());
+            return paragraphs.map(p => {
+                const firstLine = p.split('\n')[0];
+                return {
+                    term: firstLine.substring(0, Math.min(30, firstLine.length)),
+                    definition: p
+                };
+            });
         }
         
         // Update generate function to use stored entries

@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Glossary → Flashcard OCR Prototype</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            margin-top: 0;
+            color: #333;
+            font-size: 24px;
+        }
+        .upload-area {
+            border: 2px dashed #ccc;
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            margin: 20px 0;
+            cursor: pointer;
+            transition: border-color 0.3s;
+        }
+        .upload-area:hover {
+            border-color: #666;
+        }
+        .upload-area.dragover {
+            border-color: #2196F3;
+            background: #e3f2fd;
+        }
+        #imagePreview {
+            max-width: 100%;
+            max-height: 300px;
+            margin: 20px 0;
+            display: none;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            display: none;
+        }
+        .status.processing {
+            background: #fff3cd;
+            color: #856404;
+            display: block;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            display: block;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            display: block;
+        }
+        #result {
+            margin-top: 20px;
+        }
+        #extractedText {
+            width: 100%;
+            height: 200px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            resize: vertical;
+        }
+        button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #1976D2;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+    <!-- Load Tesseract.js from CDN -->
+    <script src='https://unpkg.com/tesseract.js@4.0.2/dist/tesseract.min.js'></script>
+</head>
+<body>
+    <div class="container">
+        <h1>📸 Glossary to Flashcard OCR</h1>
+        <p>Upload a photo of your glossary page - I'll extract the text for you to convert into flashcards.</p>
+        
+        <!-- Image Upload Area -->
+        <div class="upload-area" id="dropZone">
+            <p>📁 Click here or drag and drop an image</p>
+            <p style="font-size: 12px; color: #666;">Supports: JPG, PNG, GIF, BMP</p>
+            <input type="file" id="fileInput" accept="image/*" style="display: none;">
+        </div>
+        
+        <!-- Image Preview -->
+        <img id="imagePreview" alt="Preview">
+        
+        <!-- Status Messages -->
+        <div id="status" class="status"></div>
+        
+        <!-- Controls -->
+        <div id="controls" class="hidden">
+            <button id="extractBtn" onclick="extractText()">🔍 Extract Text</button>
+            <button id="resetBtn" onclick="resetApp()">🔄 Try Another Image</button>
+        </div>
+        
+        <!-- Results Area -->
+        <div id="result" class="hidden">
+            <h3>Extracted Text:</h3>
+            <textarea id="extractedText" placeholder="Extracted text will appear here..."></textarea>
+            <p style="font-size: 12px; color: #666; margin-top: 5px;">
+                💡 Next: You'll parse this into term-definition pairs for flashcards
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const imagePreview = document.getElementById('imagePreview');
+        const statusDiv = document.getElementById('status');
+        const controls = document.getElementById('controls');
+        const result = document.getElementById('result');
+        const extractedText = document.getElementById('extractedText');
+        let currentImageFile = null;
+
+        // Click to upload
+        dropZone.addEventListener('click', () => fileInput.click());
+        
+        // Drag and drop handlers
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+        
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+        
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleImageUpload(files[0]);
+            }
+        });
+        
+        // File input change
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleImageUpload(e.target.files[0]);
+            }
+        });
+
+        // Handle image upload and preview
+        function handleImageUpload(file) {
+            // Validate file type
+            if (!file.type.match('image.*')) {
+                showStatus('Please upload an image file', 'error');
+                return;
+            }
+            
+            currentImageFile = file;
+            
+            // Preview image
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                imagePreview.src = e.target.result;
+                imagePreview.style.display = 'block';
+                dropZone.style.display = 'none';
+                controls.classList.remove('hidden');
+                showStatus('Image ready! Click "Extract Text" to process.', 'success');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        // Extract text using Tesseract.js
+        async function extractText() {
+            if (!currentImageFile) return;
+            
+            // Disable extract button and show processing
+            const extractBtn = document.getElementById('extractBtn');
+            extractBtn.disabled = true;
+            showStatus('Processing image with OCR... This may take a few seconds ⏳', 'processing');
+            
+            try {
+                // Initialize Tesseract worker
+                const worker = await Tesseract.createWorker('eng');
+                
+                // Perform OCR
+                const result = await worker.recognize(currentImageFile);
+                
+                // Get extracted text
+                const text = result.data.text;
+                
+                // Display in textarea
+                extractedText.value = text;
+                result.classList.remove('hidden');
+                
+                // Clean up
+                await worker.terminate();
+                
+                showStatus('Text extracted successfully!', 'success');
+                
+            } catch (error) {
+                console.error('OCR Error:', error);
+                showStatus('Error extracting text. Please try again.', 'error');
+            } finally {
+                extractBtn.disabled = false;
+            }
+        }
+
+        // Reset the app
+        function resetApp() {
+            currentImageFile = null;
+            imagePreview.src = '';
+            imagePreview.style.display = 'none';
+            dropZone.style.display = 'block';
+            controls.classList.add('hidden');
+            result.classList.add('hidden');
+            extractedText.value = '';
+            statusDiv.style.display = 'none';
+            fileInput.value = '';
+        }
+
+        // Helper to show status messages
+        function showStatus(message, type) {
+            statusDiv.textContent = message;
+            statusDiv.className = 'status ' + type;
+        }
+    </script>
+</body>
+</html>

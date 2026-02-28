@@ -419,31 +419,79 @@
         }
         
         function smartParse(lines) {
-            // Try different parsing strategies and pick the best result
+            // Strategy 0: Markdown headers (## Term)
+            const entries0 = parseMarkdownFormat(lines);
+            if (entries0.length > 0) {
+                console.log('Using markdown header format');
+                return entries0;
+            }
             
-            // Strategy 1: Term alone on line, definition follows (Format: Oxidant, then definition)
+            // Strategy 1: Term alone on line, definition follows
             const entries1 = parseSeparateLineFormat(lines);
             
-            // Strategy 2: Term and definition on same line (Format: "absolute zero A temperature...")
+            // Strategy 2: Term and definition on same line
             const entries2 = parseSameLineFormat(lines);
             
             // Strategy 3: Term: definition format
             const entries3 = parseColonFormat(lines);
             
             // Choose the strategy that found the most complete entries
-            if (entries1.length >= entries2.length && entries1.length >= entries3.length && entries1.length > 0) {
-                console.log('Using separate line format');
-                return entries1;
-            } else if (entries2.length >= entries3.length && entries2.length > 0) {
-                console.log('Using same line format');
-                return entries2;
-            } else if (entries3.length > 0) {
-                console.log('Using colon format');
-                return entries3;
+            const scores = [
+                { entries: entries1, name: 'separate line' },
+                { entries: entries2, name: 'same line' },
+                { entries: entries3, name: 'colon' }
+            ];
+            
+            // Sort by number of entries (most first)
+            scores.sort((a, b) => b.entries.length - a.entries.length);
+            
+            if (scores[0].entries.length > 0) {
+                console.log(`Using ${scores[0].name} format (${scores[0].entries.length} entries)`);
+                return scores[0].entries;
             }
             
             // Fallback: create one entry per paragraph
             return createFallbackEntries(lines);
+        }
+
+        // NEW: Parse markdown-style headers (## Term)
+        function parseMarkdownFormat(lines) {
+            const entries = [];
+            let currentTerm = null;
+            let currentDefinition = [];
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                
+                // Check if this line is a markdown header (starts with ##)
+                if (line.startsWith('##')) {
+                    // Save previous entry if it exists
+                    if (currentTerm && currentDefinition.length > 0) {
+                        entries.push({
+                            term: currentTerm,
+                            definition: currentDefinition.join(' ').trim()
+                        });
+                    }
+                    
+                    // Extract term (remove the ## and any extra # symbols)
+                    currentTerm = line.replace(/^#+\s*/, '').trim();
+                    currentDefinition = [];
+                }
+                // If this line is not a header and we have a current term, add to definition
+                else if (currentTerm && line.length > 0) {
+                    currentDefinition.push(line);
+                }
+            }
+            
+            // Don't forget the last entry
+            if (currentTerm && currentDefinition.length > 0) {
+                entries.push({
+                    term: currentTerm,
+                    definition: currentDefinition.join(' ').trim()
+                });
+            }
+            
+            return entries;
         }
         
         // Format: Term alone on line, definition follows
@@ -587,6 +635,10 @@
             
             let html = '<div id="flashcardReview" style="margin-top: 20px; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">';
             html += '<h3 style="margin-top: 0; color: #333;">📋 Review & Edit Glossary Entries</h3>';
+            html += '<p style="color: #666; margin-bottom: 20px;">';
+            html += '📝 <strong>Pro tip:</strong> For best results, format your glossary with "## Term" on its own line, followed by the definition.';
+            html += '<br>Example: <code>## Aboriginal and Torres Strait Islander Peoples</code>';
+            html += '</p>';
             html += `<p style="color: #28a745; margin-bottom: 20px;">✅ Found ${entries.length} potential entries</p>`;
             
             entries.forEach((entry, index) => {

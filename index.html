@@ -238,8 +238,7 @@
             };
             reader.readAsDataURL(file);
         }
-
-                // Add this function BEFORE extractText
+              
         async function preprocessImage(imageFile) {
             return new Promise((resolve, reject) => {
                 const img = new Image();
@@ -313,12 +312,9 @@
             });
         }
 
-        // Then your extractText function starts here
-        async function extractText() {
-            // ... your existing extractText code ...
-        }
-        
+                
         // Extract text using Tesseract.js
+                // Enhanced extractText with color marking
         async function extractText() {
             if (!currentImageFile) return;
             
@@ -332,6 +328,10 @@
             showStatus('Starting OCR engine...', 'processing');
             
             try {
+                // First, analyze image for colors
+                showStatus('Analyzing image for colored terms...', 'processing');
+                const colorInfo = await preprocessImage(currentImageFile);
+                
                 // Create worker with progress logging
                 const worker = await Tesseract.createWorker({
                     logger: progress => {
@@ -361,43 +361,68 @@
                 showStatus('Initializing...', 'processing');
                 await worker.initialize('eng');
                 
-                // ===========================================
-                // NEW CODE STARTS HERE - Add this exactly here
-                // ===========================================
-                // Analyze image for colors BEFORE doing OCR
-                showStatus('Analyzing image for colored terms...', 'processing');
-                const colorInfo = await preprocessImage(currentImageFile);
-                console.log(`Found ${colorInfo.termRegions.length} potential colored regions`);
-                // ===========================================
-                // NEW CODE ENDS HERE
-                // ===========================================
-                
                 showStatus('Processing image... This may take a few seconds', 'processing');
                 
-                // Perform OCR
-                const { data } = await worker.recognize(currentImageFile);
+                // Perform OCR with word bounding boxes
+                const { data } = await worker.recognize(currentImageFile, {
+                    rectangle: null, // Full image
+                    rotateAuto: true,
+                    tessjs_create_box: true, // Get word positions
+                    tessjs_create_hocr: true, // Get formatted output with positions
+                    tessjs_create_tsv: true, // Get tab-separated with coordinates
+                });
                 
-                // Get extracted text
-                const text = data.text;
+                // Get the text
+                let fullText = data.text;
                 
-                if (text.trim().length === 0) {
+                // If we have color info, we can try to mark colored words
+                if (colorInfo && colorInfo.termRegions.length > 0) {
+                    showStatus('Adding color markers to text...', 'processing');
+                    
+                    // This is a simplified approach - ideally we'd match word positions
+                    // For now, we'll mark the beginning of what might be terms
+                    const lines = fullText.split('\n');
+                    const markedLines = [];
+                    
+                    for (let i = 0; i < lines.length; i++) {
+                        let line = lines[i];
+                        
+                        // Heuristic: First few lines, short lines, or lines with all caps might be terms
+                        const isPotentialTerm = (
+                            (i < 5 && line.length < 50) || // Early in document
+                            /^[A-Z\s]+$/.test(line) || // ALL CAPS
+                            (line.length < 30 && /^[A-Z]/.test(line)) // Short and capitalized
+                        );
+                        
+                        if (isPotentialTerm) {
+                            // Mark this line as a potential colored term
+                            markedLines.push(`[COLOR] ${line}`);
+                        } else {
+                            markedLines.push(line);
+                        }
+                    }
+                    
+                    fullText = markedLines.join('\n');
+                    showStatus(`✅ Added color markers to text`, 'success');
+                }
+                
+                if (fullText.trim().length === 0) {
                     showStatus('No text found. Try a clearer image with better lighting.', 'error');
                 } else {
                     // Display in textarea
-                    extractedText.value = text;
+                    extractedText.value = fullText;
                     result.classList.remove('hidden');
                     progressFill.style.width = '100%';
                     progressStatus.textContent = 'Complete!';
-                    showStatus(`✅ Success! Found ${text.split('\n').length} lines of text.`, 'success');
+                    showStatus(`✅ Success! Found ${fullText.split('\n').length} lines of text.`, 'success');
                     
-                    // Store color info for later use in parsing
+                    // Store color info for later use
                     window.lastColorInfo = colorInfo;
                     
-                    // Hide the old review section if it exists
+                    // Hide old review/flashcards
                     const oldReview = document.getElementById('flashcardReview');
                     if (oldReview) oldReview.remove();
                     
-                    // Hide old flashcards if they exist
                     const oldFlashcards = document.getElementById('finalFlashcards');
                     if (oldFlashcards) oldFlashcards.remove();
                 }
@@ -459,26 +484,21 @@
         }
 
         // Add this function to parse glossary text into flashcards
-                    // Update parseFlashcards to use color information
+
+                // Updated parser that looks for [COLOR] markers
         function parseFlashcards() {
             const text = extractedText.value;
             const lines = text.split('\n').filter(line => line.trim() !== '');
             
-            // Get the color info we stored during OCR
-            const colorInfo = window.lastColorInfo;
-            const hasColorInfo = colorInfo && colorInfo.termRegions.length > 0;
-            
-            if (hasColorInfo) {
-                console.log(`🎨 Using color info to identify terms (${colorInfo.termRegions.length} colored regions detected)`);
-            }
-            
             let html = '<div id="flashcardReview" style="margin-top: 20px; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">';
             html += '<h3 style="margin-top: 0; color: #333;">📋 Review Extracted Glossary</h3>';
             
-            if (hasColorInfo) {
-                html += '<p style="color: #28a745; margin-bottom: 20px;">🎨 Color detected! I\'ll try to identify terms based on colored text.</p>';
+            // Check for color markers
+            const hasColorMarkers = text.includes('[COLOR]');
+            if (hasColorMarkers) {
+                html += '<p style="color: #28a745; margin-bottom: 20px;">🎨 Color markers detected! Using them to identify terms.</p>';
             } else {
-                html += '<p style="color: #666; margin-bottom: 20px;">No color detected. Using text patterns to identify terms.</p>';
+                html += '<p style="color: #666; margin-bottom: 20px;">No color markers. Using text patterns to identify terms.</p>';
             }
             
             let entries = [];
@@ -486,102 +506,89 @@
             let i = 0;
             
             while (i < lines.length) {
-                const line = lines[i].trim();
+                let line = lines[i].trim();
                 if (line === '') {
                     i++;
                     continue;
                 }
                 
-                // Decide if this line is a TERM based on multiple signals
-                let isTerm = false;
+                // Check if this line has a color marker
+                const hasColorMarker = line.startsWith('[COLOR]');
+                if (hasColorMarker) {
+                    // Remove the marker for cleaner display
+                    line = line.replace('[COLOR]', '').trim();
+                }
+                
+                // Check for term indicators
+                const hasSeparator = line.includes(':') || line.includes('-') || line.includes('—');
+                const startsWithCapital = /^[A-Z]/.test(line);
+                const isShort = line.length < 50;
+                const isAllCaps = /^[A-Z\s]{3,}$/.test(line.replace(/[^A-Z\s]/g, ''));
+                
+                // Term confidence score
                 let termConfidence = 0;
-                let termText = line;
-                let definitionStart = '';
                 
-                // SIGNAL 1: Check if line has separator (dash, colon)
-                const separatorMatch = line.match(/^(.+?)\s*[-–—:]\s*(.+)$/);
-                if (separatorMatch) {
-                    termConfidence += 3;
-                    termText = separatorMatch[1].trim();
-                    definitionStart = separatorMatch[2].trim();
-                }
+                if (hasColorMarker) termConfidence += 5; // STRONG signal
+                if (hasSeparator) termConfidence += 3;
+                if (isAllCaps) termConfidence += 3;
+                if (startsWithCapital) termConfidence += 1;
+                if (isShort) termConfidence += 1;
+                if (line.endsWith('.') || line.endsWith('!') || line.endsWith('?')) termConfidence -= 2;
                 
-                // SIGNAL 2: Check capitalization (starts with capital letter)
-                if (/^[A-Z]/.test(line)) {
-                    termConfidence += 1;
-                }
+                // Check if line has both term and definition (e.g., "absolute zero A temperature of")
+                const possibleTermAtStart = line.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+([a-z].+)$/);
                 
-                // SIGNAL 3: Check if it's ALL CAPS (strong term signal)
-                if (/^[A-Z\s]{5,}$/.test(line.replace(/[^A-Z\s]/g, ''))) {
-                    termConfidence += 2;
-                }
-                
-                // SIGNAL 4: Check line length (terms are usually short)
-                if (line.length < 50) {
-                    termConfidence += 1;
-                } else {
-                    termConfidence -= 1;
-                }
-                
-                // SIGNAL 5: Check if it ends with punctuation that suggests definition
-                if (line.endsWith('.') || line.endsWith('!') || line.endsWith('?')) {
-                    termConfidence -= 2;
-                }
-                
-                // SIGNAL 6: COLOR DETECTION - if this line might be colored
-                // This is a simplified version - ideally we'd match words to positions
-                if (hasColorInfo) {
-                    // For now, we'll assume if color was detected, the first few lines might be terms
-                    if (i < 3) { // First few lines of the document often contain terms
-                        termConfidence += 1;
-                    }
-                }
-                
-                // DECISION: If confidence is high enough, this is a term
-                if (termConfidence >= 2) {
-                    // Save previous entry
-                    if (currentEntry) {
-                        entries.push(currentEntry);
-                    }
+                if (possibleTermAtStart && (hasColorMarker || termConfidence >= 3)) {
+                    // Line has term at start followed by definition
+                    if (currentEntry) entries.push(currentEntry);
                     
-                    if (definitionStart) {
-                        // Line had both term and definition (e.g., "term: definition")
+                    currentEntry = {
+                        term: possibleTermAtStart[1],
+                        definition: [possibleTermAtStart[2]]
+                    };
+                    i++;
+                }
+                else if (termConfidence >= 3) {
+                    // This is likely a term line
+                    if (currentEntry) entries.push(currentEntry);
+                    
+                    if (hasSeparator) {
+                        const parts = line.split(/[-–—:]\s*/);
                         currentEntry = {
-                            term: termText,
-                            definition: [definitionStart]
+                            term: parts[0].trim(),
+                            definition: [parts.slice(1).join(': ').trim()]
                         };
                         i++;
                     } else {
-                        // Line is just the term
                         currentEntry = {
                             term: line,
                             definition: []
                         };
                         i++;
                         
-                        // Collect following lines as definition until we hit another term
+                        // Collect definition lines
                         while (i < lines.length) {
-                            const nextLine = lines[i].trim();
-                            
-                            // Check if next line looks like a term
-                            let nextIsTerm = false;
-                            
-                            if (/^[A-Z]/.test(nextLine) && nextLine.length < 50 && !nextLine.endsWith('.')) {
-                                nextIsTerm = true;
+                            let nextLine = lines[i].trim();
+                            const nextHasMarker = nextLine.startsWith('[COLOR]');
+                            if (nextHasMarker) {
+                                nextLine = nextLine.replace('[COLOR]', '').trim();
                             }
                             
-                            if (nextLine.includes(':') || nextLine.includes('-')) {
-                                nextIsTerm = true;
-                            }
+                            // Stop if next line looks like a term
+                            const nextLooksLikeTerm = (
+                                (nextHasMarker) ||
+                                (nextLine.match(/^[A-Z][a-z]+\s+[a-z]/)) ||
+                                (nextLine.length < 40 && /^[A-Z]/.test(nextLine) && !nextLine.endsWith('.'))
+                            );
                             
-                            if (nextIsTerm) break;
+                            if (nextLooksLikeTerm) break;
                             
                             currentEntry.definition.push(nextLine);
                             i++;
                         }
                     }
                 } else {
-                    // Not a term - add to current entry or create new one
+                    // Not a term - add to current entry or create new
                     if (currentEntry) {
                         currentEntry.definition.push(line);
                     } else {
@@ -594,45 +601,21 @@
                 }
             }
             
-            // Don't forget the last entry
             if (currentEntry) {
                 entries.push(currentEntry);
             }
             
-            // If we got too many entries, try to merge intelligently
-            if (entries.length > lines.length / 2) {
-                const mergedEntries = [];
-                for (let j = 0; j < entries.length; j++) {
-                    if (mergedEntries.length === 0) {
-                        mergedEntries.push(entries[j]);
-                    } else {
-                        const last = mergedEntries[mergedEntries.length - 1];
-                        const current = entries[j];
-                        
-                        // If last has no definition and current has no clear term, merge
-                        if (last.definition.length === 0 && 
-                            current.term && 
-                            !/^[A-Z]/.test(current.term)) {
-                            last.definition.push(current.term);
-                        } else {
-                            mergedEntries.push(current);
-                        }
-                    }
-                }
-                entries = mergedEntries;
-            }
-            
-            // Render each entry
+            // Render entries with visual indicators
             entries.forEach((entry, index) => {
                 const termId = `term-${index}`;
                 const defId = `def-${index}`;
                 const definitionText = Array.isArray(entry.definition) ? entry.definition.join('\n') : entry.definition;
                 
-                // Add a small color indicator if this entry might be from colored text
-                const colorHint = hasColorInfo && index < 3 ? ' 🎨' : '';
+                // Add color indicator if this entry might be from colored text
+                const colorHint = hasColorMarkers && index < entries.length ? ' 🎨' : '';
                 
                 html += `
-                    <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin: 15px 0;">
+                    <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin: 15px 0; ${index < 3 && hasColorMarkers ? 'border-left: 4px solid #ff9800;' : ''}">
                         <div style="display: flex; align-items: center; margin-bottom: 10px;">
                             <span style="background: #007bff; color: white; width: 28px; height: 28px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-right: 10px; font-weight: bold;">${index + 1}</span>
                             <strong style="min-width: 60px;">Term${colorHint}:</strong>
@@ -648,24 +631,18 @@
             
             html += `
                 <div style="margin: 30px 0 20px; display: flex; gap: 15px; justify-content: center;">
-                    <button onclick="generateFromReviewedEntries()" style="background: #28a745; color: white; border: none; padding: 12px 30px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px;">
-                        ✅ Generate Flashcards
-                    </button>
-                    <button onclick="resetReview()" style="background: #dc3545; color: white; border: none; padding: 12px 30px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px;">
-                        ↺ Start Over
-                    </button>
+                    <button onclick="generateFromReviewedEntries()" style="background: #28a745; color: white; border: none; padding: 12px 30px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer;">✅ Generate Flashcards</button>
+                    <button onclick="resetReview()" style="background: #dc3545; color: white; border: none; padding: 12px 30px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer;">↺ Start Over</button>
                 </div>
-                <p style="text-align: center; color: #666; font-size: 12px; margin-top: 10px;">
-                    Found ${entries.length} potential entries. ${hasColorInfo ? '🎨 Color detection active.' : ''}
+                <p style="text-align: center; color: #666; font-size: 12px;">
+                    ${hasColorMarkers ? '🎨 Colored text marked with orange border' : ''}
                 </p>
             `;
             html += '</div>';
             
-            // Remove any existing review display
             const existing = document.getElementById('flashcardReview');
             if (existing) existing.remove();
             
-            // Insert after the extracted text area
             document.getElementById('result').insertAdjacentHTML('beforeend', html);
         }
         

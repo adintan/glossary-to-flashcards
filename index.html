@@ -444,23 +444,31 @@
                 const defId = `def-${index}`;
                 const definitionText = entry.definition.join('\n');
                 
-                const linkHtml = `
-                    <div id="shareLinkSection" style="margin-top: 20px; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; color: white;">
-                        <h4 style="margin: 0 0 5px 0;">📱 Share: "${setName}"</h4>
-                        <p style="margin: 0 0 15px 0; opacity: 0.9; font-size: 14px;">Students can study instantly - no account needed!</p>
-                        
-                        <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                            <input type="text" id="studyLink" value="${studyUrl}" readonly style="flex-grow: 1; padding: 12px; border: none; border-radius: 8px; font-size: 14px; color: #333;">
-                            <button onclick="copyStudyLink()" style="background: white; color: #667eea; border: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; cursor: pointer;">Copy Link</button>
-                            <button onclick="shortenLink()" style="background: #FF9800; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">🔗 Shorten</button>
+                html += `
+                    <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin: 15px 0;">
+                        <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                            <span style="background: #007bff; color: white; width: 28px; height: 28px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-right: 10px; font-weight: bold;">${index + 1}</span>
+                            <strong style="min-width: 60px;">Term:</strong>
+                            <input type="text" id="${termId}" value="${entry.term}" style="flex-grow: 1; padding: 8px 12px; border: 2px solid #007bff; border-radius: 4px; font-size: 14px; margin-left: 10px;">
                         </div>
-                        
-                        <p style="margin: 0; font-size: 12px; opacity: 0.8;">
-                            ⚡ Link includes ${window.currentFlashcards.length} cards • Created ${new Date().toLocaleDateString()}
-                        </p>
+                        <div style="display: flex; align-items: flex-start;">
+                            <strong style="min-width: 60px; margin-top: 8px;">Definition:</strong>
+                            <textarea id="${defId}" style="flex-grow: 1; padding: 8px 12px; border: 2px solid #28a745; border-radius: 4px; min-height: 80px; font-size: 14px; margin-left: 10px; font-family: inherit;" placeholder="Enter definition here...">${definitionText}</textarea>
+                        </div>
                     </div>
                 `;
-                
+            });
+            
+            html += `
+                <div style="margin: 30px 0 20px; display: flex; gap: 15px; justify-content: center;">
+                    <button onclick="generateFromReviewedEntries()" style="background: #28a745; color: white; border: none; padding: 12px 30px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                        ✅ Generate Flashcards
+                    </button>
+                    <button onclick="resetReview()" style="background: #dc3545; color: white; border: none; padding: 12px 30px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                        ↺ Start Over
+                    </button>
+                </div>
+            `;
             html += '</div>';
             
             // Remove any existing review display
@@ -551,28 +559,17 @@
             const oldLink = document.getElementById('shareLinkSection');
             if (oldLink) oldLink.remove();
             
-            // Get a title from the user (you can add an input field or generate one)
-            // For now, let's prompt for a title
-            let setName = prompt('Give this flashcard set a name (e.g., "Chemistry Chapter 5"):', 'Flashcard Set');
-            if (!setName) setName = 'Flashcard Set'; // Default if user cancels
-            
-            // Store the name with the flashcards
-            const flashcardData = {
-                name: setName,
-                cards: window.currentFlashcards,
-                date: new Date().toLocaleDateString()
-            };
-            
-            // Encode the data
-            const encodedData = encodeURIComponent(JSON.stringify(flashcardData));
+            // For now, we'll encode the flashcards in the URL
+            // Note: URLs have length limits, so this works for small sets (under 2000 characters)
+            const flashcardData = encodeURIComponent(JSON.stringify(window.currentFlashcards));
             
             // Create the study URL - replace with your actual GitHub username
-            const yourUsername = 'yourusername'; // CHANGE THIS!
-            const studyUrl = `https://${yourUsername}.github.io/glossary-to-flashcards/study.html?set=${encodedData}`;
+            const yourUsername = 'adintan'; // CHANGE THIS TO YOUR GITHUB USERNAME!
+            const studyUrl = `https://${yourUsername}.github.io/glossary-to-flashcards/study.html?set=${flashcardData}`;
             
             const linkHtml = `
                 <div id="shareLinkSection" style="margin-top: 20px; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; color: white;">
-                    <h4 style="margin: 0 0 5px 0;">📱 Share: "${setName}"</h4>
+                    <h4 style="margin: 0 0 10px 0;">📱 Share with Students</h4>
                     <p style="margin: 0 0 15px 0; opacity: 0.9; font-size: 14px;">Students can study instantly - no account needed!</p>
                     
                     <div style="display: flex; gap: 10px; margin-bottom: 15px;">
@@ -580,18 +577,28 @@
                         <button onclick="copyStudyLink()" style="background: white; color: #667eea; border: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; cursor: pointer;">Copy Link</button>
                     </div>
                     
-                    <p style="margin: 0; font-size: 12px; opacity: 0.8;">
-                        ⚡ Link includes ${window.currentFlashcards.length} cards • Created ${new Date().toLocaleDateString()}
+                    <div style="display: flex; gap: 20px; justify-content: center; font-size: 14px;">
+                        <div style="text-align: center;">
+                            <div style="font-size: 24px; margin-bottom: 5px;">📱</div>
+                            <div>Works on phones</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 24px; margin-bottom: 5px;">🔄</div>
+                            <div>Flip to reveal</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 24px; margin-bottom: 5px;">🎯</div>
+                            <div>No ads</div>
+                        </div>
+                    </div>
+                    
+                    <p style="margin: 15px 0 0 0; font-size: 12px; opacity: 0.8; text-align: center;">
+                        ✨ Try it yourself - open the link in a new tab!
                     </p>
                 </div>
             `;
-
-            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-            <input type="text" id="studyLink" value="${studyUrl}" readonly style="flex-grow: 1; padding: 12px; border: none; border-radius: 8px; font-size: 14px; color: #333;">
-            <button onclick="copyStudyLink()" style="background: white; color: #667eea; border: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; cursor: pointer;">Copy Link</button>
-            <button onclick="shortenLink()" style="background: #FF9800; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">🔗 Shorten</button>
-        </div>
             
+            // Add the share section after the flashcards
             document.getElementById('finalFlashcards').insertAdjacentHTML('beforeend', linkHtml);
         }
         
@@ -613,44 +620,6 @@
                 btn.style.background = 'white';
                 btn.style.color = '#667eea';
             }, 2000);
-        }
-
-        // Add this function to shorten the link
-        function shortenLink() {
-            const longUrl = document.getElementById('studyLink').value;
-            
-            // Show loading state
-            const btn = event.target;
-            const originalText = btn.textContent;
-            btn.textContent = '⏳ Shortening...';
-            btn.disabled = true;
-            
-            // Using TinyURL's free API
-            fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`)
-                .then(response => response.text())
-                .then(shortUrl => {
-                    document.getElementById('studyLink').value = shortUrl;
-                    
-                    // Show success
-                    btn.textContent = '✅ Shortened!';
-                    setTimeout(() => {
-                        btn.textContent = originalText;
-                        btn.disabled = false;
-                    }, 2000);
-                    
-                    // Optional: Show a success message
-                    showStatus('Link shortened! ✓', 'success');
-                })
-                .catch(() => {
-                    // Show error
-                    btn.textContent = '❌ Failed';
-                    setTimeout(() => {
-                        btn.textContent = originalText;
-                        btn.disabled = false;
-                    }, 2000);
-                    
-                    alert('Could not shorten link. Using original URL.');
-                });
         }
     </script>
 </body>

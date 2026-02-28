@@ -151,6 +151,7 @@
         <div id="controls" class="hidden">
             <button id="extractBtn" onclick="extractText()">🔍 Extract Text</button>
             <button id="resetBtn" onclick="resetApp()">🔄 Try Another Image</button>
+            <button onclick="showFlashcards()" style="background: #4CAF50;">🃏 Generate Flashcards</button>
         </div>
         
         <!-- Results Area -->
@@ -355,6 +356,128 @@
             statusDiv.textContent = message;
             statusDiv.className = 'status ' + type;
         }
+
+        // Add this function to parse glossary text into flashcards
+        function parseFlashcards() {
+            const text = extractedText.value;
+            const lines = text.split('\n');
+            const flashcards = [];
+            let currentTerm = '';
+            let currentDefinition = [];
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                
+                // Skip empty lines
+                if (line === '') continue;
+                
+                // Check if this line looks like a term (starts with capital letter, short, etc.)
+                // You can adjust these rules based on teacher feedback
+                if (line.match(/^[A-Z][a-z]+(\s[a-z]+)?$/) || 
+                    (line.endsWith(':') || line.endsWith('?')) ||
+                    (i > 0 && lines[i-1].trim() === '' && line.length < 50)) {
+                    
+                    // Save previous term if exists
+                    if (currentTerm && currentDefinition.length > 0) {
+                        flashcards.push({
+                            term: currentTerm,
+                            definition: currentDefinition.join(' ').replace(/\s+/g, ' ')
+                        });
+                    }
+                    
+                    // Start new term
+                    currentTerm = line.replace(/[:?]$/, ''); // Remove trailing colon/question mark
+                    currentDefinition = [];
+                } else {
+                    // This line is part of the definition
+                    currentDefinition.push(line);
+                }
+            }
+            
+            // Don't forget the last term
+            if (currentTerm && currentDefinition.length > 0) {
+                flashcards.push({
+                    term: currentTerm,
+                    definition: currentDefinition.join(' ').replace(/\s+/g, ' ')
+                });
+            }
+            
+            return flashcards;
+        }
+        
+        // Add function to display flashcards
+        function showFlashcards() {
+            const flashcards = parseFlashcards();
+            
+            if (flashcards.length === 0) {
+                alert('No flashcards could be parsed. Try adjusting the text or check formatting.');
+                return;
+            }
+            
+            // Create a modal or new section to display flashcards
+            let flashcardHTML = '<div style="margin-top: 20px; border-top: 2px solid #eee; padding-top: 20px;">';
+            flashcardHTML += '<h3>📚 Generated Flashcards (' + flashcards.length + ')</h3>';
+            
+            flashcards.forEach((card, index) => {
+                flashcardHTML += `
+                    <div style="background: #f9f9f9; border-left: 4px solid #2196F3; padding: 15px; margin: 10px 0; border-radius: 0 8px 8px 0;">
+                        <strong style="color: #1976D2;">Term ${index + 1}:</strong> ${card.term}<br>
+                        <strong>Definition:</strong> ${card.definition}
+                    </div>
+                `;
+            });
+            
+            // Add export buttons
+            flashcardHTML += `
+                <div style="margin: 20px 0;">
+                    <button onclick="exportToAnki()">📤 Export to Anki</button>
+                    <button onclick="exportToQuizlet()">📤 Export to Quizlet</button>
+                    <button onclick="downloadAsCSV()">💾 Download CSV</button>
+                </div>
+            `;
+            
+            flashcardHTML += '</div>';
+            
+            // Insert after the extracted text area
+            document.getElementById('result').insertAdjacentHTML('beforeend', flashcardHTML);
+        }
+        
+        // Export functions
+        function exportToAnki() {
+            const flashcards = parseFlashcards();
+            let ankiText = '';
+            flashcards.forEach(card => {
+                ankiText += `${card.term}\t${card.definition}\n`;
+            });
+            
+            const blob = new Blob([ankiText], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'anki-flashcards.txt';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        function downloadAsCSV() {
+            const flashcards = parseFlashcards();
+            let csv = 'Term,Definition\n';
+            flashcards.forEach(card => {
+                // Escape quotes and wrap in quotes to handle commas in definition
+                csv += `"${card.term.replace(/"/g, '""')}","${card.definition.replace(/"/g, '""')}"\n`;
+            });
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'flashcards.csv';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        // Add a button to trigger flashcard parsing
+        // Add this near your other buttons
     </script>
 </body>
 </html>

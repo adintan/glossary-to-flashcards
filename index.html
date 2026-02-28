@@ -485,147 +485,97 @@
             statusDiv.className = 'status ' + type;
         }
 
-        // Add this function to parse glossary text into flashcards
-
-                // Updated parser that looks for [COLOR] markers
         function parseFlashcards() {
             const text = extractedText.value;
-            const lines = text.split('\n').filter(line => line.trim() !== '');
+            const entries = [];
+            
+            // Split by blank lines (double newline)
+            const paragraphs = text.split('\n\n').filter(p => p.trim() !== '');
             
             let html = '<div id="flashcardReview" style="margin-top: 20px; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">';
             html += '<h3 style="margin-top: 0; color: #333;">📋 Review Extracted Glossary</h3>';
+            html += '<p style="color: #28a745; margin-bottom: 20px;">✅ Found ' + paragraphs.length + ' glossary entries!</p>';
             
-            // Check for color markers
-            const hasColorMarkers = text.includes('[COLOR]');
-            if (hasColorMarkers) {
-                html += '<p style="color: #28a745; margin-bottom: 20px;">🎨 Color markers detected! Using them to identify terms.</p>';
-            } else {
-                html += '<p style="color: #666; margin-bottom: 20px;">No color markers. Using text patterns to identify terms.</p>';
-            }
-            
-            let entries = [];
-            let currentEntry = null;
-            let i = 0;
-            
-            while (i < lines.length) {
-                let line = lines[i].trim();
-                if (line === '') {
-                    i++;
-                    continue;
-                }
+            paragraphs.forEach((paragraph, index) => {
+                // Split into lines
+                const lines = paragraph.split('\n').filter(l => l.trim() !== '');
+                if (lines.length === 0) return;
                 
-                // Check if this line has a color marker
-                const hasColorMarker = line.startsWith('[COLOR]');
-                if (hasColorMarker) {
-                    // Remove the marker for cleaner display
-                    line = line.replace('[COLOR]', '').trim();
-                }
+                // The first line contains the term and the beginning of definition
+                const firstLine = lines[0].trim();
                 
-                // Check for term indicators
-                const hasSeparator = line.includes(':') || line.includes('-') || line.includes('—');
-                const startsWithCapital = /^[A-Z]/.test(line);
-                const isShort = line.length < 50;
-                const isAllCaps = /^[A-Z\s]{3,}$/.test(line.replace(/[^A-Z\s]/g, ''));
+                // Find the term - it's the FIRST WORD (or first few words for multi-word terms)
+                // Based on your glossary, terms can be:
+                // - One word: absorb, acceleration, accuracy, activity, aim
+                // - Two words: absolute zero, air resistance, alpha particle, alternating current
+                // - Three words: absorbed dose
                 
-                // Term confidence score
-                let termConfidence = 0;
+                // Look for common multi-word terms from your glossary
+                let term = '';
+                let definitionStart = '';
                 
-                if (hasColorMarker) termConfidence += 5; // STRONG signal
-                if (hasSeparator) termConfidence += 3;
-                if (isAllCaps) termConfidence += 3;
-                if (startsWithCapital) termConfidence += 1;
-                if (isShort) termConfidence += 1;
-                if (line.endsWith('.') || line.endsWith('!') || line.endsWith('?')) termConfidence -= 2;
+                // Check for multi-word terms first
+                const multiWordTerms = [
+                    'absolute zero',
+                    'air resistance', 
+                    'alpha particle',
+                    'alternating current',
+                    'absorbed dose'
+                ];
                 
-                // Check if line has both term and definition (e.g., "absolute zero A temperature of")
-                const possibleTermAtStart = line.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+([a-z].+)$/);
-                
-                if (possibleTermAtStart && (hasColorMarker || termConfidence >= 3)) {
-                    // Line has term at start followed by definition
-                    if (currentEntry) entries.push(currentEntry);
-                    
-                    currentEntry = {
-                        term: possibleTermAtStart[1],
-                        definition: [possibleTermAtStart[2]]
-                    };
-                    i++;
-                }
-                else if (termConfidence >= 3) {
-                    // This is likely a term line
-                    if (currentEntry) entries.push(currentEntry);
-                    
-                    if (hasSeparator) {
-                        const parts = line.split(/[-–—:]\s*/);
-                        currentEntry = {
-                            term: parts[0].trim(),
-                            definition: [parts.slice(1).join(': ').trim()]
-                        };
-                        i++;
-                    } else {
-                        currentEntry = {
-                            term: line,
-                            definition: []
-                        };
-                        i++;
-                        
-                        // Collect definition lines
-                        while (i < lines.length) {
-                            let nextLine = lines[i].trim();
-                            const nextHasMarker = nextLine.startsWith('[COLOR]');
-                            if (nextHasMarker) {
-                                nextLine = nextLine.replace('[COLOR]', '').trim();
-                            }
-                            
-                            // Stop if next line looks like a term
-                            const nextLooksLikeTerm = (
-                                (nextHasMarker) ||
-                                (nextLine.match(/^[A-Z][a-z]+\s+[a-z]/)) ||
-                                (nextLine.length < 40 && /^[A-Z]/.test(nextLine) && !nextLine.endsWith('.'))
-                            );
-                            
-                            if (nextLooksLikeTerm) break;
-                            
-                            currentEntry.definition.push(nextLine);
-                            i++;
-                        }
+                let foundMultiWord = false;
+                for (let multiTerm of multiWordTerms) {
+                    if (firstLine.startsWith(multiTerm)) {
+                        term = multiTerm;
+                        definitionStart = firstLine.substring(multiTerm.length).trim();
+                        foundMultiWord = true;
+                        break;
                     }
-                } else {
-                    // Not a term - add to current entry or create new
-                    if (currentEntry) {
-                        currentEntry.definition.push(line);
-                    } else {
-                        currentEntry = {
-                            term: "Unknown Term",
-                            definition: [line]
-                        };
-                    }
-                    i++;
                 }
-            }
-            
-            if (currentEntry) {
-                entries.push(currentEntry);
-            }
-            
-            // Render entries with visual indicators
-            entries.forEach((entry, index) => {
+                
+                if (!foundMultiWord) {
+                    // Single word term - take first word
+                    const firstSpace = firstLine.indexOf(' ');
+                    if (firstSpace > 0) {
+                        term = firstLine.substring(0, firstSpace);
+                        definitionStart = firstLine.substring(firstSpace + 1).trim();
+                    } else {
+                        term = firstLine;
+                        definitionStart = '';
+                    }
+                }
+                
+                // Collect the full definition
+                let definitionLines = [definitionStart];
+                
+                // Add any remaining lines (for multi-line definitions)
+                for (let i = 1; i < lines.length; i++) {
+                    definitionLines.push(lines[i].trim());
+                }
+                
+                // Join all definition parts
+                let definition = definitionLines.join(' ').replace(/\s+/g, ' ').trim();
+                
+                // Store the entry
+                entries.push({
+                    term: term,
+                    definition: definition
+                });
+                
+                // Add to HTML
                 const termId = `term-${index}`;
                 const defId = `def-${index}`;
-                const definitionText = Array.isArray(entry.definition) ? entry.definition.join('\n') : entry.definition;
-                
-                // Add color indicator if this entry might be from colored text
-                const colorHint = hasColorMarkers && index < entries.length ? ' 🎨' : '';
                 
                 html += `
-                    <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin: 15px 0; ${index < 3 && hasColorMarkers ? 'border-left: 4px solid #ff9800;' : ''}">
+                    <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin: 15px 0; border-left: 4px solid #007bff;">
                         <div style="display: flex; align-items: center; margin-bottom: 10px;">
                             <span style="background: #007bff; color: white; width: 28px; height: 28px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-right: 10px; font-weight: bold;">${index + 1}</span>
-                            <strong style="min-width: 60px;">Term${colorHint}:</strong>
-                            <input type="text" id="${termId}" value="${entry.term}" style="flex-grow: 1; padding: 8px 12px; border: 2px solid #007bff; border-radius: 4px; font-size: 14px; margin-left: 10px;">
+                            <strong style="min-width: 60px;">Term:</strong>
+                            <input type="text" id="${termId}" value="${term}" style="flex-grow: 1; padding: 8px 12px; border: 2px solid #007bff; border-radius: 4px; font-size: 14px; margin-left: 10px;">
                         </div>
                         <div style="display: flex; align-items: flex-start;">
                             <strong style="min-width: 60px; margin-top: 8px;">Definition:</strong>
-                            <textarea id="${defId}" style="flex-grow: 1; padding: 8px 12px; border: 2px solid #28a745; border-radius: 4px; min-height: 80px; font-size: 14px; margin-left: 10px; font-family: inherit;" placeholder="Enter definition here...">${definitionText}</textarea>
+                            <textarea id="${defId}" style="flex-grow: 1; padding: 8px 12px; border: 2px solid #28a745; border-radius: 4px; min-height: 100px; font-size: 14px; margin-left: 10px; font-family: inherit;" placeholder="Enter definition here...">${definition}</textarea>
                         </div>
                     </div>
                 `;
@@ -633,19 +583,49 @@
             
             html += `
                 <div style="margin: 30px 0 20px; display: flex; gap: 15px; justify-content: center;">
-                    <button onclick="generateFromReviewedEntries()" style="background: #28a745; color: white; border: none; padding: 12px 30px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer;">✅ Generate Flashcards</button>
+                    <button onclick="generateFromReviewedEntries()" style="background: #28a745; color: white; border: none; padding: 12px 30px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer;">✅ Generate Flashcards (${entries.length} entries)</button>
                     <button onclick="resetReview()" style="background: #dc3545; color: white; border: none; padding: 12px 30px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer;">↺ Start Over</button>
                 </div>
                 <p style="text-align: center; color: #666; font-size: 12px;">
-                    ${hasColorMarkers ? '🎨 Colored text marked with orange border' : ''}
+                    Pattern detected: Term at start of each paragraph, followed by definition
                 </p>
             `;
             html += '</div>';
             
+            // Store entries for later use
+            window.currentParsedEntries = entries;
+            
+            // Remove any existing review display
             const existing = document.getElementById('flashcardReview');
             if (existing) existing.remove();
             
+            // Insert after the extracted text area
             document.getElementById('result').insertAdjacentHTML('beforeend', html);
+        }
+        
+        // Update generate function to use stored entries
+        function generateFromReviewedEntries() {
+            const flashcards = [];
+            let index = 0;
+            
+            while (true) {
+                const termInput = document.getElementById(`term-${index}`);
+                if (!termInput) break;
+                
+                const term = termInput.value.trim();
+                const definition = document.getElementById(`def-${index}`).value.trim();
+                
+                if (term && definition) {
+                    flashcards.push({ term, definition });
+                }
+                index++;
+            }
+            
+            if (flashcards.length > 0) {
+                displayFlashcards(flashcards);
+            } else {
+                alert('No valid flashcards to generate');
+            }
         }
         
         function generateFromReviewedEntries() {

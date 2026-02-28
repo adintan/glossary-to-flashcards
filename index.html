@@ -46,25 +46,29 @@
             display: none;
         }
         .status {
-            padding: 10px;
+            padding: 15px;
             margin: 10px 0;
             border-radius: 4px;
             display: none;
+            font-weight: 500;
         }
         .status.processing {
             background: #fff3cd;
             color: #856404;
             display: block;
+            border-left: 4px solid #ffc107;
         }
         .status.success {
             background: #d4edda;
             color: #155724;
             display: block;
+            border-left: 4px solid #28a745;
         }
         .status.error {
             background: #f8d7da;
             color: #721c24;
             display: block;
+            border-left: 4px solid #dc3545;
         }
         #result {
             margin-top: 20px;
@@ -87,6 +91,7 @@
             cursor: pointer;
             font-size: 14px;
             margin-right: 10px;
+            font-weight: 500;
         }
         button:hover {
             background: #1976D2;
@@ -98,9 +103,23 @@
         .hidden {
             display: none;
         }
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            margin: 10px 0;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: #2196F3;
+            width: 0%;
+            transition: width 0.3s;
+        }
     </style>
     <!-- Load Tesseract.js from CDN -->
-    </script><script src='https://cdn.jsdelivr.net/npm/tesseract.js@5.0.3/dist/tesseract.min.js'></script>
+    <script src='https://unpkg.com/tesseract.js@4.0.2/dist/tesseract.min.js'></script>
 </head>
 <body>
     <div class="container">
@@ -117,6 +136,14 @@
         <!-- Image Preview -->
         <img id="imagePreview" alt="Preview">
         
+        <!-- Progress Bar -->
+        <div id="progressContainer" style="display: none;">
+            <div class="progress-bar">
+                <div id="progressFill" class="progress-fill"></div>
+            </div>
+            <div id="progressStatus" style="font-size: 12px; color: #666;"></div>
+        </div>
+        
         <!-- Status Messages -->
         <div id="status" class="status"></div>
         
@@ -130,8 +157,12 @@
         <div id="result" class="hidden">
             <h3>Extracted Text:</h3>
             <textarea id="extractedText" placeholder="Extracted text will appear here..."></textarea>
+            <div style="margin-top: 10px;">
+                <button onclick="copyToClipboard()">📋 Copy to Clipboard</button>
+                <button onclick="downloadAsText()">💾 Download as .txt</button>
+            </div>
             <p style="font-size: 12px; color: #666; margin-top: 5px;">
-                💡 Next: You'll parse this into term-definition pairs for flashcards
+                💡 Next step: We'll parse this into term-definition pairs for flashcards
             </p>
         </div>
     </div>
@@ -145,6 +176,9 @@
         const controls = document.getElementById('controls');
         const result = document.getElementById('result');
         const extractedText = document.getElementById('extractedText');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressFill = document.getElementById('progressFill');
+        const progressStatus = document.getElementById('progressStatus');
         let currentImageFile = null;
 
         // Click to upload
@@ -184,6 +218,12 @@
                 return;
             }
             
+            // Check file size (limit to 5MB to prevent issues)
+            if (file.size > 5 * 1024 * 1024) {
+                showStatus('Image too large. Please upload an image under 5MB.', 'error');
+                return;
+            }
+            
             currentImageFile = file;
             
             // Preview image
@@ -204,37 +244,60 @@
             
             const extractBtn = document.getElementById('extractBtn');
             extractBtn.disabled = true;
-            showStatus('Starting OCR... This may take a moment ⏳', 'processing');
+            
+            // Show progress bar
+            progressContainer.style.display = 'block';
+            progressFill.style.width = '0%';
+            
+            showStatus('Starting OCR engine...', 'processing');
             
             try {
-                showStatus('Loading OCR engine...', 'processing');
-                
-                // Create worker with better configuration
+                // Create worker with progress logging
                 const worker = await Tesseract.createWorker({
-                    logger: m => console.log(m) // This shows progress in console
+                    logger: progress => {
+                        console.log('OCR Progress:', progress);
+                        
+                        // Update progress bar
+                        if (progress.status === 'loading tesseract core') {
+                            progressFill.style.width = '10%';
+                            progressStatus.textContent = 'Loading OCR engine...';
+                        } else if (progress.status === 'loading language traineddata') {
+                            progressFill.style.width = '30%';
+                            progressStatus.textContent = 'Loading language data...';
+                        } else if (progress.status === 'initializing api') {
+                            progressFill.style.width = '50%';
+                            progressStatus.textContent = 'Initializing...';
+                        } else if (progress.status === 'recognizing text') {
+                            const percent = Math.round(progress.progress * 100);
+                            progressFill.style.width = (50 + percent * 0.5) + '%';
+                            progressStatus.textContent = `Recognizing text... ${percent}%`;
+                        }
+                    }
                 });
                 
-                showStatus('Loading language...', 'processing');
+                showStatus('Loading English language...', 'processing');
                 await worker.loadLanguage('eng');
+                
+                showStatus('Initializing...', 'processing');
                 await worker.initialize('eng');
                 
-                showStatus('Processing image...', 'processing');
+                showStatus('Processing image... This may take a few seconds', 'processing');
                 
-                // Perform OCR with additional options
-                const { data } = await worker.recognize(currentImageFile, {
-                    tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:;-()[]\'"',
-                });
+                // Perform OCR
+                const { data } = await worker.recognize(currentImageFile);
                 
                 // Get extracted text
                 const text = data.text;
                 
                 if (text.trim().length === 0) {
-                    showStatus('No text found. Try a clearer image.', 'error');
+                    showStatus('No text found. Try a clearer image with better lighting.', 'error');
                 } else {
                     // Display in textarea
                     extractedText.value = text;
                     result.classList.remove('hidden');
-                    showStatus('Text extracted successfully!', 'success');
+                    progressFill.style.width = '100%';
+                    progressStatus.textContent = 'Complete!';
+                    showStatus(`✅ Success! Found ${text.split('\n').length} lines of text.`, 'success');
                 }
                 
                 // Clean up
@@ -243,9 +306,33 @@
             } catch (error) {
                 console.error('OCR Error Details:', error);
                 showStatus('Error: ' + error.message, 'error');
+                progressContainer.style.display = 'none';
             } finally {
                 extractBtn.disabled = false;
             }
+        }
+
+        // Copy text to clipboard
+        function copyToClipboard() {
+            extractedText.select();
+            document.execCommand('copy');
+            showStatus('Copied to clipboard!', 'success');
+            setTimeout(() => {
+                showStatus('Text extracted successfully!', 'success');
+            }, 2000);
+        }
+
+        // Download as text file
+        function downloadAsText() {
+            const text = extractedText.value;
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'extracted-glossary.txt';
+            a.click();
+            URL.revokeObjectURL(url);
+            showStatus('File downloaded!', 'success');
         }
 
         // Reset the app
@@ -259,6 +346,8 @@
             extractedText.value = '';
             statusDiv.style.display = 'none';
             fileInput.value = '';
+            progressContainer.style.display = 'none';
+            progressFill.style.width = '0%';
         }
 
         // Helper to show status messages

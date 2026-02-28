@@ -516,31 +516,110 @@
             let html = '<div id="finalFlashcards" style="margin-top: 20px; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">';
             html += '<h3 style="margin-top: 0; color: #28a745; display: flex; align-items: center; gap: 10px;">✅ Your Flashcards Are Ready! <span style="background: #28a745; color: white; padding: 4px 12px; border-radius: 20px; font-size: 14px;">' + flashcards.length + ' cards</span></h3>';
             
-            flashcards.forEach((card, i) => {
+            // Show preview of first few flashcards
+            const previewCount = Math.min(flashcards.length, 3);
+            for (let i = 0; i < previewCount; i++) {
                 html += `
-                    <div style="background: #f8f9fa; border-left: 4px solid #28a745; padding: 15px; margin: 10px 0; border-radius: 0 8px 8px 0;">
-                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
-                            <span style="background: #28a745; color: white; width: 24px; height: 24px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 12px;">${i + 1}</span>
-                            <strong style="font-size: 16px; color: #28a745;">${card.term}</strong>
-                        </div>
-                        <div style="padding-left: 34px; color: #333; line-height: 1.5;">${card.definition}</div>
+                    <div style="background: #f8f9fa; border-left: 4px solid #28a745; padding: 12px; margin: 8px 0; border-radius: 0 8px 8px 0;">
+                        <strong>${i + 1}. ${flashcards[i].term}</strong><br>
+                        <span style="color: #555; font-size: 14px;">${flashcards[i].definition.substring(0, 80)}${flashcards[i].definition.length > 80 ? '...' : ''}</span>
                     </div>
                 `;
-            });
+            }
             
+            if (flashcards.length > 3) {
+                html += `<p style="text-align: center; color: #666; margin: 10px 0;">... and ${flashcards.length - 3} more cards</p>`;
+            }
+            
+            // Export buttons row
             html += `
-                <div style="margin: 30px 0 10px; display: flex; gap: 15px; flex-wrap: wrap; justify-content: center;">
-                    <button onclick="exportToAnki()" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer; display: flex; align-items: center; gap: 5px;">📤 Export to Anki</button>
-                    <button onclick="downloadAsCSV()" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer; display: flex; align-items: center; gap: 5px;">📊 Download CSV</button>
-                    <button onclick="copyFlashcardsToClipboard()" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer; display: flex; align-items: center; gap: 5px;">📋 Copy All</button>
+                <div style="margin: 20px 0; display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+                    <button onclick="exportToAnki()" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer;">📤 Export to Anki</button>
+                    <button onclick="downloadAsCSV()" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer;">📊 Download CSV</button>
+                    <button onclick="copyFlashcardsToClipboard()" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer;">📋 Copy All</button>
                 </div>
             `;
+            
             html += '</div>';
             
             document.getElementById('result').insertAdjacentHTML('beforeend', html);
             
             // Store flashcards for export functions
             window.currentFlashcards = flashcards;
+            
+            // Automatically show the share link section
+            setTimeout(() => generateStudyLink(), 100);
+        }
+        
+        // Add this NEW function to generate shareable study link
+        function generateStudyLink() {
+            if (!window.currentFlashcards || window.currentFlashcards.length === 0) return;
+            
+            // Remove old share link if it exists
+            const oldLink = document.getElementById('shareLinkSection');
+            if (oldLink) oldLink.remove();
+            
+            // For now, we'll encode the flashcards in the URL
+            // Note: URLs have length limits, so this works for small sets (under 2000 characters)
+            const flashcardData = encodeURIComponent(JSON.stringify(window.currentFlashcards));
+            
+            // Create the study URL - replace with your actual GitHub username
+            const yourUsername = 'adintan'; // CHANGE THIS TO YOUR GITHUB USERNAME!
+            const studyUrl = `https://${yourUsername}.github.io/glossary-to-flashcards/study.html?set=${flashcardData}`;
+            
+            const linkHtml = `
+                <div id="shareLinkSection" style="margin-top: 20px; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; color: white;">
+                    <h4 style="margin: 0 0 10px 0;">📱 Share with Students</h4>
+                    <p style="margin: 0 0 15px 0; opacity: 0.9; font-size: 14px;">Students can study instantly - no account needed!</p>
+                    
+                    <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                        <input type="text" id="studyLink" value="${studyUrl}" readonly style="flex-grow: 1; padding: 12px; border: none; border-radius: 8px; font-size: 14px; color: #333;">
+                        <button onclick="copyStudyLink()" style="background: white; color: #667eea; border: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; cursor: pointer;">Copy Link</button>
+                    </div>
+                    
+                    <div style="display: flex; gap: 20px; justify-content: center; font-size: 14px;">
+                        <div style="text-align: center;">
+                            <div style="font-size: 24px; margin-bottom: 5px;">📱</div>
+                            <div>Works on phones</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 24px; margin-bottom: 5px;">🔄</div>
+                            <div>Flip to reveal</div>
+                        </div>
+                        <div style="text-align: center;">
+                            <div style="font-size: 24px; margin-bottom: 5px;">🎯</div>
+                            <div>No ads</div>
+                        </div>
+                    </div>
+                    
+                    <p style="margin: 15px 0 0 0; font-size: 12px; opacity: 0.8; text-align: center;">
+                        ✨ Try it yourself - open the link in a new tab!
+                    </p>
+                </div>
+            `;
+            
+            // Add the share section after the flashcards
+            document.getElementById('finalFlashcards').insertAdjacentHTML('beforeend', linkHtml);
+        }
+        
+        // Add this helper function to copy the link
+        function copyStudyLink() {
+            const linkInput = document.getElementById('studyLink');
+            linkInput.select();
+            document.execCommand('copy');
+            
+            // Show feedback
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.textContent = 'Copied! ✓';
+            btn.style.background = '#28a745';
+            btn.style.color = 'white';
+            
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.style.background = 'white';
+                btn.style.color = '#667eea';
+            }, 2000);
         }
     </script>
 </body>

@@ -593,6 +593,12 @@
                     </p>
                 </div>
             `;
+
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+            <input type="text" id="studyLink" value="${studyUrl}" readonly style="flex-grow: 1; padding: 12px; border: none; border-radius: 8px; font-size: 14px; color: #333;">
+            <button onclick="copyStudyLink()" style="background: white; color: #667eea; border: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; cursor: pointer;">Copy Link</button>
+            <button onclick="shortenLink()" style="background: #FF9800; color: white; border: none; padding: 12px 20px; border-radius: 8px; font-weight: bold; cursor: pointer;">🔗 Shorten</button>
+        </div>
             
             document.getElementById('finalFlashcards').insertAdjacentHTML('beforeend', linkHtml);
         }
@@ -615,6 +621,44 @@
                 btn.style.background = 'white';
                 btn.style.color = '#667eea';
             }, 2000);
+        }
+
+        // Add this function to shorten the link
+        function shortenLink() {
+            const longUrl = document.getElementById('studyLink').value;
+            
+            // Show loading state
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.textContent = '⏳ Shortening...';
+            btn.disabled = true;
+            
+            // Using TinyURL's free API
+            fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`)
+                .then(response => response.text())
+                .then(shortUrl => {
+                    document.getElementById('studyLink').value = shortUrl;
+                    
+                    // Show success
+                    btn.textContent = '✅ Shortened!';
+                    setTimeout(() => {
+                        btn.textContent = originalText;
+                        btn.disabled = false;
+                    }, 2000);
+                    
+                    // Optional: Show a success message
+                    showStatus('Link shortened! ✓', 'success');
+                })
+                .catch(() => {
+                    // Show error
+                    btn.textContent = '❌ Failed';
+                    setTimeout(() => {
+                        btn.textContent = originalText;
+                        btn.disabled = false;
+                    }, 2000);
+                    
+                    alert('Could not shorten link. Using original URL.');
+                });
         }
     </script>
 </body>

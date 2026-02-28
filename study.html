@@ -236,7 +236,7 @@
 </head>
 <body>
     <h1>📚 Study Flashcards</h1>
-    <h1>📚 <span id="setTitle">Study Flashcards</span></h1>
+    
     <!-- Study Mode Toggle -->
     <div class="study-mode">
         <button class="mode-btn active" id="defToTermBtn" onclick="setMode('definition-to-term')">
@@ -278,31 +278,15 @@
         // Get flashcards from URL
         const urlParams = new URLSearchParams(window.location.search);
         const flashcardData = urlParams.get('set');
-        // Replace the flashcard data parsing section with this:
         let flashcards = [];
-        let setTitle = 'Study Flashcards';
         
         if (flashcardData) {
             try {
-                const decoded = JSON.parse(decodeURIComponent(flashcardData));
-                
-                // Check if it's the new format with title or old format
-                if (decoded.name && decoded.cards) {
-                    // New format
-                    setTitle = decoded.name;
-                    flashcards = decoded.cards;
-                } else {
-                    // Old format (just array of flashcards)
-                    flashcards = decoded;
-                }
+                flashcards = JSON.parse(decodeURIComponent(flashcardData));
             } catch (e) {
                 document.getElementById('displayContent').innerHTML = 'Error loading flashcards';
             }
         }
-
-// Update the page title
-document.getElementById('setTitle').textContent = setTitle;
-document.title = `${setTitle} (${flashcards.length} cards)`;
         
         // Game state
         let currentCard = 0;

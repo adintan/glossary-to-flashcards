@@ -282,6 +282,17 @@
                 showStatus('Initializing...', 'processing');
                 await worker.initialize('eng');
                 
+                // ===========================================
+                // NEW CODE STARTS HERE - Add this exactly here
+                // ===========================================
+                // Analyze image for colors BEFORE doing OCR
+                showStatus('Analyzing image for colored terms...', 'processing');
+                const colorInfo = await preprocessImage(currentImageFile);
+                console.log(`Found ${colorInfo.termRegions.length} potential colored regions`);
+                // ===========================================
+                // NEW CODE ENDS HERE
+                // ===========================================
+                
                 showStatus('Processing image... This may take a few seconds', 'processing');
                 
                 // Perform OCR
@@ -299,6 +310,9 @@
                     progressFill.style.width = '100%';
                     progressStatus.textContent = 'Complete!';
                     showStatus(`✅ Success! Found ${text.split('\n').length} lines of text.`, 'success');
+                    
+                    // Store color info for later use in parsing
+                    window.lastColorInfo = colorInfo;
                     
                     // Hide the old review section if it exists
                     const oldReview = document.getElementById('flashcardReview');

@@ -151,7 +151,6 @@
         <div id="controls" class="hidden">
             <button id="extractBtn" onclick="extractText()">🔍 Extract Text</button>
             <button id="resetBtn" onclick="resetApp()">🔄 Try Another Image</button>
-            <button onclick="parseFlashcards()" style="background: #FF9800; margin-left: 10px;">📝 Review & Edit Glossary</button>
         </div>
         
         <!-- Results Area -->
@@ -159,6 +158,7 @@
             <h3>Extracted Text:</h3>
             <textarea id="extractedText" placeholder="Extracted text will appear here..."></textarea>
             <div style="margin-top: 10px;">
+                <button onclick="parseFlashcards()" style="background: #FF9800; margin-left: 10px;">📝 Review & Edit Glossary</button>
                 <button onclick="copyToClipboard()">📋 Copy to Clipboard</button>
                 <button onclick="downloadAsText()">💾 Download as .txt</button>
             </div>

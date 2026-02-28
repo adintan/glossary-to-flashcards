@@ -2,6 +2,7 @@
 <html>
 <head>
     <title>Study Flashcards</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -10,67 +11,221 @@
             padding: 20px;
             background: #f5f5f5;
         }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        
+        .study-mode {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin: 20px 0;
+            padding: 10px;
+            background: white;
+            border-radius: 50px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .mode-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+            flex: 1;
+            max-width: 200px;
+        }
+        
+        .mode-btn.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        .mode-btn:not(.active) {
+            background: #f0f0f0;
+            color: #666;
+        }
+        
         .flashcard {
             background: white;
-            border-radius: 12px;
-            padding: 40px 20px;
+            border-radius: 20px;
+            padding: 60px 20px;
             margin: 20px 0;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
             cursor: pointer;
             text-align: center;
-            min-height: 200px;
+            min-height: 250px;
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 18px;
-            transition: transform 0.2s;
+            transition: transform 0.2s, box-shadow 0.2s;
+            border: 2px solid transparent;
         }
+        
         .flashcard:hover {
-            transform: scale(1.02);
+            transform: translateY(-2px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+            border-color: #667eea;
         }
+        
+        .flashcard:active {
+            transform: translateY(0);
+        }
+        
         .term {
-            font-size: 24px;
+            font-size: 32px;
             font-weight: bold;
             color: #2196F3;
+            line-height: 1.4;
         }
+        
         .definition {
-            font-size: 18px;
+            font-size: 20px;
             color: #333;
+            line-height: 1.6;
+            max-width: 90%;
+            margin: 0 auto;
         }
+        
         .controls {
             display: flex;
-            gap: 10px;
+            gap: 15px;
             justify-content: center;
-            margin: 20px 0;
+            margin: 30px 0;
+            flex-wrap: wrap;
         }
+        
         button {
-            background: #2196F3;
+            background: #667eea;
             color: white;
             border: none;
-            padding: 12px 24px;
-            border-radius: 25px;
+            padding: 15px 30px;
+            border-radius: 40px;
             font-size: 16px;
+            font-weight: 600;
             cursor: pointer;
+            transition: background 0.2s, transform 0.2s;
+            min-width: 140px;
+            box-shadow: 0 4px 10px rgba(102, 126, 234, 0.3);
         }
+        
         button:hover {
-            background: #1976D2;
+            background: #764ba2;
+            transform: translateY(-2px);
         }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
         .counter {
             text-align: center;
-            margin: 10px 0;
+            margin: 15px 0;
             color: #666;
+            font-size: 16px;
+            font-weight: 500;
+        }
+        
+        .hint {
+            text-align: center;
+            color: #999;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        
+        .tap-hint {
+            background: #f0f0f0;
+            padding: 8px 16px;
+            border-radius: 20px;
+            display: inline-block;
+            margin: 10px auto;
+            color: #666;
+            font-size: 13px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background: #e0e0e0;
+            border-radius: 3px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s;
+        }
+        
+        @media (max-width: 480px) {
+            .flashcard {
+                min-height: 200px;
+                padding: 40px 15px;
+            }
+            
+            .term {
+                font-size: 24px;
+            }
+            
+            .definition {
+                font-size: 16px;
+            }
+            
+            button {
+                padding: 12px 20px;
+                min-width: 120px;
+                font-size: 14px;
+            }
         }
     </style>
 </head>
 <body>
     <h1>📚 Study Flashcards</h1>
-    <div class="counter" id="counter">Card 1 of 0</div>
-    <div class="flashcard" id="flashcard" onclick="flipCard()">
-        <div id="termDisplay" class="term">Loading...</div>
+    
+    <!-- Study Mode Toggle -->
+    <div class="study-mode">
+        <button class="mode-btn active" id="defToTermBtn" onclick="setMode('definition-to-term')">
+            📖 Definition → Term
+        </button>
+        <button class="mode-btn" id="termToDefBtn" onclick="setMode('term-to-definition')">
+            📝 Term → Definition
+        </button>
     </div>
+    
+    <!-- Progress Bar -->
+    <div class="progress-bar">
+        <div class="progress-fill" id="progressFill"></div>
+    </div>
+    
+    <!-- Counter -->
+    <div class="counter" id="counter">Card 1 of 0</div>
+    
+    <!-- Flashcard -->
+    <div class="flashcard" id="flashcard" onclick="flipCard()">
+        <div id="displayContent" class="term">Loading...</div>
+    </div>
+    
+    <!-- Tap Hint -->
+    <div class="tap-hint" id="tapHint">👆 Tap card to flip</div>
+    
+    <!-- Navigation Controls -->
     <div class="controls">
         <button onclick="prevCard()">← Previous</button>
         <button onclick="nextCard()">Next →</button>
+    </div>
+    
+    <!-- Keyboard Shortcuts Hint -->
+    <div class="hint">
+        ⬅️ ➡️ arrow keys to navigate • spacebar to flip
     </div>
     
     <script>
@@ -78,54 +233,133 @@
         const urlParams = new URLSearchParams(window.location.search);
         const flashcardData = urlParams.get('set');
         let flashcards = [];
-        let currentCard = 0;
-        let showingTerm = true;
         
         if (flashcardData) {
             try {
                 flashcards = JSON.parse(decodeURIComponent(flashcardData));
             } catch (e) {
-                document.getElementById('flashcard').innerHTML = 'Error loading flashcards';
+                document.getElementById('displayContent').innerHTML = 'Error loading flashcards';
             }
         }
         
-        const termDisplay = document.getElementById('termDisplay');
-        const counter = document.getElementById('counter');
+        // Game state
+        let currentCard = 0;
+        let showingTerm = false; // Default: show definition first (so showingTerm = false means showing definition)
+        let studyMode = 'definition-to-term'; // Default mode
         
+        // DOM elements
+        const displayContent = document.getElementById('displayContent');
+        const counter = document.getElementById('counter');
+        const progressFill = document.getElementById('progressFill');
+        const tapHint = document.getElementById('tapHint');
+        const defToTermBtn = document.getElementById('defToTermBtn');
+        const termToDefBtn = document.getElementById('termToDefBtn');
+        
+        // Update display based on current state
         function updateDisplay() {
             if (flashcards.length === 0) {
-                termDisplay.textContent = 'No flashcards';
+                displayContent.textContent = 'No flashcards';
                 return;
             }
             
             const card = flashcards[currentCard];
-            termDisplay.textContent = showingTerm ? card.term : card.definition;
-            termDisplay.className = showingTerm ? 'term' : 'definition';
+            
+            // Determine what to show based on mode and flip state
+            if (studyMode === 'definition-to-term') {
+                // Default: show definition, flip shows term
+                if (showingTerm) {
+                    displayContent.textContent = card.term;
+                    displayContent.className = 'term';
+                    tapHint.textContent = '👆 Tap to see definition';
+                } else {
+                    displayContent.textContent = card.definition;
+                    displayContent.className = 'definition';
+                    tapHint.textContent = '👆 Tap to see term';
+                }
+            } else {
+                // Term-to-definition mode: show term, flip shows definition
+                if (showingTerm) {
+                    displayContent.textContent = card.term;
+                    displayContent.className = 'term';
+                    tapHint.textContent = '👆 Tap to see definition';
+                } else {
+                    displayContent.textContent = card.definition;
+                    displayContent.className = 'definition';
+                    tapHint.textContent = '👆 Tap to see term';
+                }
+            }
+            
+            // Update counter and progress
             counter.textContent = `Card ${currentCard + 1} of ${flashcards.length}`;
+            const progressPercent = ((currentCard + 1) / flashcards.length) * 100;
+            progressFill.style.width = progressPercent + '%';
         }
         
+        // Flip card
         function flipCard() {
             showingTerm = !showingTerm;
             updateDisplay();
         }
         
+        // Next card
         function nextCard() {
             if (currentCard < flashcards.length - 1) {
                 currentCard++;
-                showingTerm = true;
+                // Reset to showing the default side based on mode
+                showingTerm = (studyMode === 'term-to-definition'); 
                 updateDisplay();
             }
         }
         
+        // Previous card
         function prevCard() {
             if (currentCard > 0) {
                 currentCard--;
-                showingTerm = true;
+                // Reset to showing the default side based on mode
+                showingTerm = (studyMode === 'term-to-definition');
                 updateDisplay();
             }
         }
         
-        updateDisplay();
+        // Set study mode
+        function setMode(mode) {
+            studyMode = mode;
+            
+            // Update button styles
+            if (mode === 'definition-to-term') {
+                defToTermBtn.classList.add('active');
+                termToDefBtn.classList.remove('active');
+                showingTerm = false; // Show definition first
+            } else {
+                termToDefBtn.classList.add('active');
+                defToTermBtn.classList.remove('active');
+                showingTerm = true; // Show term first
+            }
+            
+            updateDisplay();
+        }
+        
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft') {
+                prevCard();
+            } else if (e.key === 'ArrowRight') {
+                nextCard();
+            } else if (e.key === ' ' || e.key === 'Spacebar') {
+                e.preventDefault();
+                flipCard();
+            }
+        });
+        
+        // Initialize display
+        if (flashcards.length > 0) {
+            setMode('definition-to-term'); // Set default mode
+        }
+        
+        // Show total cards in title
+        if (flashcards.length > 0) {
+            document.title = `Flashcards (${flashcards.length} cards)`;
+        }
     </script>
 </body>
 </html>

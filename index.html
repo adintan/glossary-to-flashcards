@@ -151,7 +151,7 @@
         <div id="controls" class="hidden">
             <button id="extractBtn" onclick="extractText()">🔍 Extract Text</button>
             <button id="resetBtn" onclick="resetApp()">🔄 Try Another Image</button>
-            <button onclick="parseFlashcards()" style="background: #4CAF50;">📋 Review & Edit Glossary</button>
+            <button onclick="parseFlashcards()" style="background: #FF9800; margin-left: 10px;">📝 Review & Edit Glossary</button>
         </div>
         
         <!-- Results Area -->
@@ -299,6 +299,14 @@
                     progressFill.style.width = '100%';
                     progressStatus.textContent = 'Complete!';
                     showStatus(`✅ Success! Found ${text.split('\n').length} lines of text.`, 'success');
+                    
+                    // Hide the old review section if it exists
+                    const oldReview = document.getElementById('flashcardReview');
+                    if (oldReview) oldReview.remove();
+                    
+                    // Hide old flashcards if they exist
+                    const oldFlashcards = document.getElementById('finalFlashcards');
+                    if (oldFlashcards) oldFlashcards.remove();
                 }
                 
                 // Clean up

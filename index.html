@@ -508,48 +508,68 @@
         }
         
         function smartParse(lines) {
+            // First, check if the text has clear line breaks (Format A)
+            const hasClearStructure = detectClearStructure(lines);
+            
+            if (hasClearStructure) {
+                console.log('Detected clear line-break structure');
+                return parseStructuredFormat(lines);
+            }
+            
+            // If no clear structure, try to detect terms within paragraphs (Format B)
+            console.log('No clear structure, trying paragraph parsing');
+            return parseParagraphFormat(lines);
+        }
+        
+        function detectClearStructure(lines) {
+            // Look for pattern: short line, then longer line(s), then blank line
+            let structureCount = 0;
+            
+            for (let i = 0; i < lines.length - 1; i++) {
+                const current = lines[i].trim();
+                const next = lines[i + 1].trim();
+                
+                // If current line is short and next line is longer, likely a term-definition pair
+                if (current.length < 40 && next.length > current.length && /^[A-Z]/.test(current)) {
+                    structureCount++;
+                }
+            }
+            
+            return structureCount > 2; // At least a few clear term-definition pairs
+        }
+        
+        function parseStructuredFormat(lines) {
             const entries = [];
             let i = 0;
             
             while (i < lines.length) {
-                const currentLine = lines[i].trim();
+                const line = lines[i].trim();
                 
                 // Skip empty lines
-                if (currentLine.length === 0) {
+                if (line.length === 0) {
                     i++;
                     continue;
                 }
                 
-                // Check if this line looks like a term:
-                // 1. Starts with capital letter
-                // 2. Not too long (under 60 characters)
-                // 3. Doesn't end with punctuation that suggests it's a definition
-                // 4. Next line exists and is longer (definition)
-                const looksLikeTerm = (
-                    /^[A-Z]/.test(currentLine) &&
-                    currentLine.length < 60 &&
-                    !currentLine.match(/[.!?]$/) &&
-                    i < lines.length - 1 &&
-                    lines[i + 1].length > currentLine.length
-                );
-                
-                if (looksLikeTerm) {
-                    const term = currentLine;
+                // This line looks like a term (short, capitalized)
+                if (line.length < 50 && /^[A-Z]/.test(line)) {
+                    const term = line;
                     let definition = '';
-                    
-                    // Move to next line (start of definition)
                     i++;
                     
-                    // Collect definition lines until we hit another potential term
+                    // Collect definition lines until next term or blank line
                     while (i < lines.length) {
                         const nextLine = lines[i].trim();
                         
-                        // Stop if this line looks like a new term
-                        if (/^[A-Z]/.test(nextLine) && 
-                            nextLine.length < 60 && 
-                            !nextLine.match(/[.!?]$/) &&
-                            i < lines.length - 1 &&
-                            lines[i + 1].length > nextLine.length) {
+                        // Stop if we hit a blank line (end of definition)
+                        if (nextLine.length === 0) {
+                            i++;
+                            break;
+                        }
+                        
+                        // Stop if next line looks like a new term
+                        if (nextLine.length < 50 && /^[A-Z]/.test(nextLine) && 
+                            (i + 1 >= lines.length || lines[i + 1].length > 0)) {
                             break;
                         }
                         
@@ -559,25 +579,70 @@
                     
                     entries.push({ term, definition });
                 } else {
-                    // Not a term - might be a continuation or standalone text
-                    // Let's check if it could be a term without a clear definition following
-                    if (/^[A-Z]/.test(currentLine) && currentLine.length < 60) {
-                        // Maybe it's a term with no definition? Add as placeholder
-                        entries.push({ 
-                            term: currentLine, 
-                            definition: '[Definition missing - please edit]' 
-                        });
-                        i++;
-                    } else {
-                        // Skip unrecognized lines
-                        i++;
-                    }
+                    i++;
                 }
             }
             
-            // If we found no entries, try fallback methods
+            return entries;
+        }
+        
+        function parseParagraphFormat(lines) {
+            // Join all lines into one text
+            const text = lines.join(' ');
+            
+            // Look for common term patterns within the text
+            // Terms are often followed by definitions and separated by periods or line breaks in meaning
+            
+            // Try to split by common term endings
+            const entries = [];
+            
+            // Look for patterns like "absolute dating a technique to determine..."
+            // where a capitalized word/phrase is followed by a definition
+            const termRegex = /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+([a-z][^.!?]+[.!?])/g;
+            let match;
+            
+            while ((match = termRegex.exec(text)) !== null) {
+                entries.push({
+                    term: match[1],
+                    definition: match[2]
+                });
+            }
+            
+            // If regex found nothing, try splitting by potential term markers
             if (entries.length === 0) {
-                return parseFallback(lines);
+                const words = text.split(' ');
+                let currentTerm = '';
+                let currentDef = [];
+                let buildingTerm = true;
+                
+                for (let i = 0; i < words.length; i++) {
+                    const word = words[i];
+                    
+                    // If word is capitalized and relatively short, might be a term start
+                    if (/^[A-Z][a-z]+$/.test(word) && word.length > 2 && buildingTerm) {
+                        if (currentTerm) {
+                            // Save previous entry if we have one
+                            if (currentDef.length > 0) {
+                                entries.push({
+                                    term: currentTerm,
+                                    definition: currentDef.join(' ')
+                                });
+                            }
+                        }
+                        currentTerm = word;
+                        currentDef = [];
+                        buildingTerm = false;
+                    } else if (!buildingTerm) {
+                        currentDef.push(word);
+                    }
+                }
+                
+                if (currentTerm && currentDef.length > 0) {
+                    entries.push({
+                        term: currentTerm,
+                        definition: currentDef.join(' ')
+                    });
+                }
             }
             
             return entries;

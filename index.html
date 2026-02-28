@@ -559,17 +559,28 @@
             const oldLink = document.getElementById('shareLinkSection');
             if (oldLink) oldLink.remove();
             
-            // For now, we'll encode the flashcards in the URL
-            // Note: URLs have length limits, so this works for small sets (under 2000 characters)
-            const flashcardData = encodeURIComponent(JSON.stringify(window.currentFlashcards));
+            // Get a title from the user (you can add an input field or generate one)
+            // For now, let's prompt for a title
+            let setName = prompt('Give this flashcard set a name (e.g., "Chemistry Chapter 5"):', 'Flashcard Set');
+            if (!setName) setName = 'Flashcard Set'; // Default if user cancels
+            
+            // Store the name with the flashcards
+            const flashcardData = {
+                name: setName,
+                cards: window.currentFlashcards,
+                date: new Date().toLocaleDateString()
+            };
+            
+            // Encode the data
+            const encodedData = encodeURIComponent(JSON.stringify(flashcardData));
             
             // Create the study URL - replace with your actual GitHub username
-            const yourUsername = 'adintan'; // CHANGE THIS TO YOUR GITHUB USERNAME!
-            const studyUrl = `https://${yourUsername}.github.io/glossary-to-flashcards/study.html?set=${flashcardData}`;
+            const yourUsername = 'yourusername'; // CHANGE THIS!
+            const studyUrl = `https://${yourUsername}.github.io/glossary-to-flashcards/study.html?set=${encodedData}`;
             
             const linkHtml = `
                 <div id="shareLinkSection" style="margin-top: 20px; padding: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px; color: white;">
-                    <h4 style="margin: 0 0 10px 0;">📱 Share with Students</h4>
+                    <h4 style="margin: 0 0 5px 0;">📱 Share: "${setName}"</h4>
                     <p style="margin: 0 0 15px 0; opacity: 0.9; font-size: 14px;">Students can study instantly - no account needed!</p>
                     
                     <div style="display: flex; gap: 10px; margin-bottom: 15px;">
@@ -577,28 +588,12 @@
                         <button onclick="copyStudyLink()" style="background: white; color: #667eea; border: none; padding: 12px 24px; border-radius: 8px; font-weight: bold; cursor: pointer;">Copy Link</button>
                     </div>
                     
-                    <div style="display: flex; gap: 20px; justify-content: center; font-size: 14px;">
-                        <div style="text-align: center;">
-                            <div style="font-size: 24px; margin-bottom: 5px;">📱</div>
-                            <div>Works on phones</div>
-                        </div>
-                        <div style="text-align: center;">
-                            <div style="font-size: 24px; margin-bottom: 5px;">🔄</div>
-                            <div>Flip to reveal</div>
-                        </div>
-                        <div style="text-align: center;">
-                            <div style="font-size: 24px; margin-bottom: 5px;">🎯</div>
-                            <div>No ads</div>
-                        </div>
-                    </div>
-                    
-                    <p style="margin: 15px 0 0 0; font-size: 12px; opacity: 0.8; text-align: center;">
-                        ✨ Try it yourself - open the link in a new tab!
+                    <p style="margin: 0; font-size: 12px; opacity: 0.8;">
+                        ⚡ Link includes ${window.currentFlashcards.length} cards • Created ${new Date().toLocaleDateString()}
                     </p>
                 </div>
             `;
             
-            // Add the share section after the flashcards
             document.getElementById('finalFlashcards').insertAdjacentHTML('beforeend', linkHtml);
         }
         

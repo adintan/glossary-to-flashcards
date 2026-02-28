@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Study Flashcards</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .flashcard {
+            background: white;
+            border-radius: 12px;
+            padding: 40px 20px;
+            margin: 20px 0;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            cursor: pointer;
+            text-align: center;
+            min-height: 200px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: transform 0.2s;
+        }
+        .flashcard:hover {
+            transform: scale(1.02);
+        }
+        .term {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2196F3;
+        }
+        .definition {
+            font-size: 18px;
+            color: #333;
+        }
+        .controls {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        button {
+            background: #2196F3;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #1976D2;
+        }
+        .counter {
+            text-align: center;
+            margin: 10px 0;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>📚 Study Flashcards</h1>
+    <div class="counter" id="counter">Card 1 of 0</div>
+    <div class="flashcard" id="flashcard" onclick="flipCard()">
+        <div id="termDisplay" class="term">Loading...</div>
+    </div>
+    <div class="controls">
+        <button onclick="prevCard()">← Previous</button>
+        <button onclick="nextCard()">Next →</button>
+    </div>
+    
+    <script>
+        // Get flashcards from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const flashcardData = urlParams.get('set');
+        let flashcards = [];
+        let currentCard = 0;
+        let showingTerm = true;
+        
+        if (flashcardData) {
+            try {
+                flashcards = JSON.parse(decodeURIComponent(flashcardData));
+            } catch (e) {
+                document.getElementById('flashcard').innerHTML = 'Error loading flashcards';
+            }
+        }
+        
+        const termDisplay = document.getElementById('termDisplay');
+        const counter = document.getElementById('counter');
+        
+        function updateDisplay() {
+            if (flashcards.length === 0) {
+                termDisplay.textContent = 'No flashcards';
+                return;
+            }
+            
+            const card = flashcards[currentCard];
+            termDisplay.textContent = showingTerm ? card.term : card.definition;
+            termDisplay.className = showingTerm ? 'term' : 'definition';
+            counter.textContent = `Card ${currentCard + 1} of ${flashcards.length}`;
+        }
+        
+        function flipCard() {
+            showingTerm = !showingTerm;
+            updateDisplay();
+        }
+        
+        function nextCard() {
+            if (currentCard < flashcards.length - 1) {
+                currentCard++;
+                showingTerm = true;
+                updateDisplay();
+            }
+        }
+        
+        function prevCard() {
+            if (currentCard > 0) {
+                currentCard--;
+                showingTerm = true;
+                updateDisplay();
+            }
+        }
+        
+        updateDisplay();
+    </script>
+</body>
+</html>

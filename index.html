@@ -362,51 +362,103 @@
             const text = extractedText.value;
             const lines = text.split('\n').filter(line => line.trim() !== '');
             
-            // Show a simple interface for the user to verify/correct
-            let html = '<div id="flashcardReview" style="margin-top: 20px;">';
-            html += '<h3>📋 Review Extracted Glossary</h3>';
-            html += '<p>Each entry should have a term and definition. Adjust if needed:</p>';
+            let html = '<div id="flashcardReview" style="margin-top: 20px; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">';
+            html += '<h3 style="margin-top: 0; color: #333;">📋 Review Extracted Glossary</h3>';
+            html += '<p style="color: #666; margin-bottom: 20px;">Each entry should have a term and definition. Adjust if needed:</p>';
             
+            let entries = [];
             let currentEntry = null;
-            let entryCount = 0;
             
+            // First pass: identify potential terms
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i].trim();
                 
-                // Look for potential term indicators
-                const looksLikeTerm = (
-                    (line.match(/^[A-Z][\w\s]+$/) && line.length < 50) || // Starts with capital, reasonable length
-                    line.endsWith(':') ||                                   // Ends with colon
-                    line.endsWith('?') ||                                   // Ends with question mark
-                    (i > 0 && lines[i-1].trim() === '' && line.length < 40) // After blank line, short
+                // Skip if line is too long to be a term (likely definition)
+                if (line.length > 60) {
+                    if (currentEntry) {
+                        currentEntry.definition.push(line);
+                    }
+                    continue;
+                }
+                
+                // Check if this line looks like a term
+                const isTerm = (
+                    // Chemistry terms from your example
+                    line.match(/^Oxid(ant|ation|e|ising)/) ||
+                    // Common term patterns
+                    (line.match(/^[A-Z][a-z]+(\s+[a-z]+)?$/) && line.length < 40) ||
+                    // Terms ending with colon or question mark
+                    line.endsWith(':') || 
+                    line.endsWith('?') ||
+                    // Short lines that might be terms
+                    (line.length < 30 && line.match(/^[A-Z]/))
                 );
                 
-                if (looksLikeTerm && (i === 0 || lines[i-1].trim() === '')) {
-                    // Start a new entry
-                    if (currentEntry) {
-                        // Save previous entry
-                        html += renderEntryForEditing(currentEntry, entryCount++);
+                if (isTerm) {
+                    // Save previous entry
+                    if (currentEntry && (currentEntry.term || currentEntry.definition.length > 0)) {
+                        entries.push(currentEntry);
                     }
-                    
+                    // Start new entry
                     currentEntry = {
-                        term: line,
+                        term: line.replace(/[:?]$/, ''), // Remove trailing punctuation
                         definition: []
                     };
                 } else if (currentEntry) {
                     // This line is part of the current definition
                     currentEntry.definition.push(line);
+                } else {
+                    // No current entry, but we have a line - might be a term we missed
+                    // Create a new entry with this as term (user can fix if wrong)
+                    currentEntry = {
+                        term: line,
+                        definition: []
+                    };
                 }
             }
             
             // Don't forget the last entry
-            if (currentEntry) {
-                html += renderEntryForEditing(currentEntry, entryCount++);
+            if (currentEntry && (currentEntry.term || currentEntry.definition.length > 0)) {
+                entries.push(currentEntry);
             }
             
+            // If we didn't find any entries with terms, create one for each line
+            if (entries.length === 0) {
+                entries = lines.map(line => ({
+                    term: line,
+                    definition: []
+                }));
+            }
+            
+            // Render each entry
+            entries.forEach((entry, index) => {
+                const termId = `term-${index}`;
+                const defId = `def-${index}`;
+                const definitionText = entry.definition.join('\n');
+                
+                html += `
+                    <div style="background: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 15px; margin: 15px 0;">
+                        <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                            <span style="background: #007bff; color: white; width: 28px; height: 28px; border-radius: 14px; display: flex; align-items: center; justify-content: center; margin-right: 10px; font-weight: bold;">${index + 1}</span>
+                            <strong style="min-width: 60px;">Term:</strong>
+                            <input type="text" id="${termId}" value="${entry.term}" style="flex-grow: 1; padding: 8px 12px; border: 2px solid #007bff; border-radius: 4px; font-size: 14px; margin-left: 10px;">
+                        </div>
+                        <div style="display: flex; align-items: flex-start;">
+                            <strong style="min-width: 60px; margin-top: 8px;">Definition:</strong>
+                            <textarea id="${defId}" style="flex-grow: 1; padding: 8px 12px; border: 2px solid #28a745; border-radius: 4px; min-height: 80px; font-size: 14px; margin-left: 10px; font-family: inherit;" placeholder="Enter definition here...">${definitionText}</textarea>
+                        </div>
+                    </div>
+                `;
+            });
+            
             html += `
-                <div style="margin: 20px 0; display: flex; gap: 10px;">
-                    <button onclick="generateFromReviewedEntries()" style="background: #4CAF50; padding: 12px 24px;">✅ Generate Flashcards</button>
-                    <button onclick="resetReview()" style="background: #f44336; padding: 12px 24px;">↺ Start Over</button>
+                <div style="margin: 30px 0 20px; display: flex; gap: 15px; justify-content: center;">
+                    <button onclick="generateFromReviewedEntries()" style="background: #28a745; color: white; border: none; padding: 12px 30px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                        ✅ Generate Flashcards
+                    </button>
+                    <button onclick="resetReview()" style="background: #dc3545; color: white; border: none; padding: 12px 30px; border-radius: 25px; font-size: 16px; font-weight: bold; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                        ↺ Start Over
+                    </button>
                 </div>
             `;
             html += '</div>';
@@ -415,35 +467,28 @@
             const existing = document.getElementById('flashcardReview');
             if (existing) existing.remove();
             
+            // Insert after the extracted text area
             document.getElementById('result').insertAdjacentHTML('beforeend', html);
-        }
-        
-        function renderEntryForEditing(entry, index) {
-            return `
-                <div style="background: #f9f9f9; border: 1px solid #ddd; border-radius: 8px; padding: 15px; margin: 15px 0;">
-                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                        <span style="background: #666; color: white; width: 24px; height: 24px; border-radius: 12px; display: flex; align-items: center; justify-content: center;">${index + 1}</span>
-                        <strong>Term:</strong>
-                        <input type="text" id="term-${index}" value="${entry.term}" style="flex-grow: 1; padding: 8px; border: 2px solid #2196F3; border-radius: 4px;">
-                    </div>
-                    <div style="display: flex; align-items: flex-start; gap: 10px;">
-                        <strong>Definition:</strong>
-                        <textarea id="def-${index}" style="flex-grow: 1; padding: 8px; border: 2px solid #4CAF50; border-radius: 4px; min-height: 80px;">${entry.definition.join('\n')}</textarea>
-                    </div>
-                </div>
-            `;
         }
         
         function generateFromReviewedEntries() {
             const flashcards = [];
             let index = 0;
             
-            while (document.getElementById(`term-${index}`)) {
-                const term = document.getElementById(`term-${index}`).value.trim();
+            // Keep collecting until we don't find more terms
+            while (true) {
+                const termInput = document.getElementById(`term-${index}`);
+                if (!termInput) break;
+                
+                const term = termInput.value.trim();
                 const definition = document.getElementById(`def-${index}`).value.trim();
                 
                 if (term && definition) {
                     flashcards.push({ term, definition });
+                } else if (term && !definition) {
+                    // If term exists but definition is empty, prompt user
+                    alert(`Please add a definition for "${term}"`);
+                    return;
                 }
                 index++;
             }
@@ -460,77 +505,34 @@
             const existing = document.getElementById('finalFlashcards');
             if (existing) existing.remove();
             
-            let html = '<div id="finalFlashcards" style="margin-top: 20px; border-top: 2px solid #4CAF50; padding-top: 20px;">';
-            html += '<h3>✅ Your Flashcards Are Ready!</h3>';
+            let html = '<div id="finalFlashcards" style="margin-top: 20px; background: white; border-radius: 8px; padding: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">';
+            html += '<h3 style="margin-top: 0; color: #28a745; display: flex; align-items: center; gap: 10px;">✅ Your Flashcards Are Ready! <span style="background: #28a745; color: white; padding: 4px 12px; border-radius: 20px; font-size: 14px;">' + flashcards.length + ' cards</span></h3>';
             
             flashcards.forEach((card, i) => {
                 html += `
-                    <div style="background: #f0f8ff; border-left: 4px solid #4CAF50; padding: 15px; margin: 10px 0; border-radius: 0 8px 8px 0;">
-                        <strong>${i + 1}. ${card.term}</strong><br>
-                        <span style="color: #555;">${card.definition}</span>
+                    <div style="background: #f8f9fa; border-left: 4px solid #28a745; padding: 15px; margin: 10px 0; border-radius: 0 8px 8px 0;">
+                        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                            <span style="background: #28a745; color: white; width: 24px; height: 24px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 12px;">${i + 1}</span>
+                            <strong style="font-size: 16px; color: #28a745;">${card.term}</strong>
+                        </div>
+                        <div style="padding-left: 34px; color: #333; line-height: 1.5;">${card.definition}</div>
                     </div>
                 `;
             });
             
             html += `
-                <div style="margin: 20px 0; display: flex; gap: 10px; flex-wrap: wrap;">
-                    <button onclick="exportToAnki(flashcards)" style="background: #4CAF50;">📤 Export to Anki</button>
-                    <button onclick="downloadAsCSV(flashcards)" style="background: #4CAF50;">💾 Download CSV</button>
-                    <button onclick="copyFlashcardsToClipboard(flashcards)" style="background: #4CAF50;">📋 Copy All</button>
+                <div style="margin: 30px 0 10px; display: flex; gap: 15px; flex-wrap: wrap; justify-content: center;">
+                    <button onclick="exportToAnki()" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer; display: flex; align-items: center; gap: 5px;">📤 Export to Anki</button>
+                    <button onclick="downloadAsCSV()" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer; display: flex; align-items: center; gap: 5px;">📊 Download CSV</button>
+                    <button onclick="copyFlashcardsToClipboard()" style="background: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 20px; cursor: pointer; display: flex; align-items: center; gap: 5px;">📋 Copy All</button>
                 </div>
             `;
+            html += '</div>';
             
             document.getElementById('result').insertAdjacentHTML('beforeend', html);
             
             // Store flashcards for export functions
             window.currentFlashcards = flashcards;
-        }
-        
-        function resetReview() {
-            document.getElementById('flashcardReview').remove();
-        }
-        
-        // Update export functions to use stored flashcards
-        function exportToAnki() {
-            if (!window.currentFlashcards) return;
-            let ankiText = '';
-            window.currentFlashcards.forEach(card => {
-                ankiText += `${card.term}\t${card.definition}\n`;
-            });
-            
-            downloadFile(ankiText, 'anki-flashcards.txt', 'text/plain');
-        }
-        
-        function downloadAsCSV() {
-            if (!window.currentFlashcards) return;
-            let csv = 'Term,Definition\n';
-            window.currentFlashcards.forEach(card => {
-                csv += `"${card.term.replace(/"/g, '""')}","${card.definition.replace(/"/g, '""')}"\n`;
-            });
-            
-            downloadFile(csv, 'flashcards.csv', 'text/csv');
-        }
-        
-        function copyFlashcardsToClipboard() {
-            if (!window.currentFlashcards) return;
-            let text = '';
-            window.currentFlashcards.forEach(card => {
-                text += `${card.term}: ${card.definition}\n\n`;
-            });
-            
-            navigator.clipboard.writeText(text).then(() => {
-                alert('Flashcards copied to clipboard!');
-            });
-        }
-        
-        function downloadFile(content, filename, type) {
-            const blob = new Blob([content], { type });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            a.click();
-            URL.revokeObjectURL(url);
         }
     </script>
 </body>

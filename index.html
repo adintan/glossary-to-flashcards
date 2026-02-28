@@ -239,11 +239,17 @@
             reader.readAsDataURL(file);
         }
               
+                // Simplified preprocessImage with guaranteed return
         async function preprocessImage(imageFile) {
-            return new Promise((resolve, reject) => {
+            console.log('preprocessImage started for:', imageFile.name);
+            
+            return new Promise((resolve) => {
                 const img = new Image();
+                
                 img.onload = () => {
                     try {
+                        console.log('Image loaded, size:', img.width, 'x', img.height);
+                        
                         // Create canvas to analyze image
                         const canvas = document.createElement('canvas');
                         const ctx = canvas.getContext('2d');
@@ -255,40 +261,39 @@
                         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
                         const data = imageData.data;
                         
-                        // Analyze colors to find potential terms
+                        // Analyze colors
                         const termRegions = [];
                         
-                        // Sample every 10th pixel for performance
-                        for (let y = 0; y < canvas.height; y += 10) {
-                            for (let x = 0; x < canvas.width; x += 10) {
+                        // Sample every 20th pixel for performance
+                        for (let y = 0; y < canvas.height; y += 20) {
+                            for (let x = 0; x < canvas.width; x += 20) {
                                 const i = (y * canvas.width + x) * 4;
                                 const r = data[i];
                                 const g = data[i + 1];
                                 const b = data[i + 2];
                                 
-                                // Check if this pixel might be part of a term
-                                // Terms are often darker/more saturated
-                                const brightness = (r + g + b) / 3;
-                                const isDark = brightness < 128;
-                                const isColored = Math.abs(r - g) > 40 || Math.abs(g - b) > 40 || Math.abs(r - b) > 40;
+                                // Check for colored pixels
+                                const isColored = Math.abs(r - g) > 50 || Math.abs(g - b) > 50 || Math.abs(r - b) > 50;
                                 
-                                if (isDark && isColored) {
+                                if (isColored) {
                                     termRegions.push({x, y, r, g, b});
                                 }
                             }
                         }
                         
-                        console.log(`🎨 Color analysis: Found ${termRegions.length} potential colored regions`);
+                        console.log(`Found ${termRegions.length} colored regions`);
                         
+                        // ALWAYS resolve with an object, even if empty
                         resolve({
                             canvas: canvas,
                             termRegions: termRegions,
                             imageData: imageData,
-                            hasColor: termRegions.length > 50 // Heuristic: enough colored pixels
+                            hasColor: termRegions.length > 0
                         });
-                    } catch (error) {
-                        console.error('Error in color analysis:', error);
-                        // Return empty result but don't break the app
+                        
+                    } catch (e) {
+                        console.error('Error in image processing:', e);
+                        // ALWAYS resolve with default object on error
                         resolve({
                             canvas: null,
                             termRegions: [],
@@ -299,7 +304,8 @@
                 };
                 
                 img.onerror = () => {
-                    console.error('Failed to load image for color analysis');
+                    console.error('Failed to load image');
+                    // ALWAYS resolve with default object on error
                     resolve({
                         canvas: null,
                         termRegions: [],
@@ -314,7 +320,7 @@
 
                 
         // Extract text using Tesseract.js
-                // Enhanced extractText with color marking
+                // Simplified extractText with better error handling
         async function extractText() {
             if (!currentImageFile) return;
             
@@ -328,10 +334,13 @@
             showStatus('Starting OCR engine...', 'processing');
             
             try {
+                console.log('1: Starting color analysis...');
                 // First, analyze image for colors
                 showStatus('Analyzing image for colored terms...', 'processing');
                 const colorInfo = await preprocessImage(currentImageFile);
+                console.log('2: Color analysis complete:', colorInfo);
                 
+                console.log('3: Creating Tesseract worker...');
                 // Create worker with progress logging
                 const worker = await Tesseract.createWorker({
                     logger: progress => {
@@ -355,47 +364,38 @@
                     }
                 });
                 
+                console.log('4: Loading English language...');
                 showStatus('Loading English language...', 'processing');
                 await worker.loadLanguage('eng');
                 
+                console.log('5: Initializing...');
                 showStatus('Initializing...', 'processing');
                 await worker.initialize('eng');
                 
+                console.log('6: Running OCR on image...');
                 showStatus('Processing image... This may take a few seconds', 'processing');
                 
-                // Perform OCR with word bounding boxes
-                const { data } = await worker.recognize(currentImageFile, {
-                    rectangle: null, // Full image
-                    rotateAuto: true,
-                    tessjs_create_box: true, // Get word positions
-                    tessjs_create_hocr: true, // Get formatted output with positions
-                    tessjs_create_tsv: true, // Get tab-separated with coordinates
-                });
+                // Perform OCR
+                const { data } = await worker.recognize(currentImageFile);
+                
+                console.log('7: OCR complete, got text length:', data.text.length);
                 
                 // Get the text
                 let fullText = data.text;
                 
-                // If we have color info, we can try to mark colored words
-                if (colorInfo && colorInfo.termRegions.length > 0) {
+                // If we have color info, try to mark colored words
+                if (colorInfo && colorInfo.termRegions && colorInfo.termRegions.length > 0) {
+                    console.log('8: Adding color markers. Found', colorInfo.termRegions.length, 'colored regions');
                     showStatus('Adding color markers to text...', 'processing');
                     
-                    // This is a simplified approach - ideally we'd match word positions
-                    // For now, we'll mark the beginning of what might be terms
                     const lines = fullText.split('\n');
                     const markedLines = [];
                     
                     for (let i = 0; i < lines.length; i++) {
                         let line = lines[i];
                         
-                        // Heuristic: First few lines, short lines, or lines with all caps might be terms
-                        const isPotentialTerm = (
-                            (i < 5 && line.length < 50) || // Early in document
-                            /^[A-Z\s]+$/.test(line) || // ALL CAPS
-                            (line.length < 30 && /^[A-Z]/.test(line)) // Short and capitalized
-                        );
-                        
-                        if (isPotentialTerm) {
-                            // Mark this line as a potential colored term
+                        // Simple heuristic: mark short lines that might be terms
+                        if (line.length > 0 && line.length < 40 && /^[A-Z]/.test(line)) {
                             markedLines.push(`[COLOR] ${line}`);
                         } else {
                             markedLines.push(line);
@@ -403,7 +403,8 @@
                     }
                     
                     fullText = markedLines.join('\n');
-                    showStatus(`✅ Added color markers to text`, 'success');
+                } else {
+                    console.log('8: No color regions found or colorInfo missing');
                 }
                 
                 if (fullText.trim().length === 0) {
@@ -427,11 +428,12 @@
                     if (oldFlashcards) oldFlashcards.remove();
                 }
                 
+                console.log('9: Cleaning up worker...');
                 // Clean up
                 await worker.terminate();
                 
             } catch (error) {
-                console.error('OCR Error Details:', error);
+                console.error('❌ ERROR DETAILS:', error);
                 showStatus('Error: ' + error.message, 'error');
                 progressContainer.style.display = 'none';
             } finally {

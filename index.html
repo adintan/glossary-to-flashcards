@@ -465,30 +465,14 @@
             while (i < lines.length) {
                 let currentLine = lines[i].trim();
                 
-                // Case 1: Line starts with ## (markdown header)
-                if (currentLine.startsWith('##')) {
-                    let mergedLine = currentLine;
-                    i++;
-                    
-                    // Keep adding lines that are likely part of the same header
-                    while (i < lines.length) {
-                        const nextLine = lines[i].trim();
-                        
-                        // Stop if we hit another ##
-                        if (nextLine.startsWith('##')) break;
-                        
-                        // Stop if next line looks like a definition (long, ends with punctuation)
-                        if (nextLine.length > 60 || nextLine.match(/[.!?]$/)) break;
-                        
-                        // Otherwise, it's probably part of the header
-                        mergedLine += ' ' + nextLine;
-                        i++;
-                    }
-                    merged.push(mergedLine);
-                }
+                // Check if this line might be the start of a term
+                const isTermStart = (
+                    /^[A-Z]/.test(currentLine) && 
+                    currentLine.length < 50 &&
+                    !currentLine.match(/[.!?]$/)
+                );
                 
-                // Case 2: Line looks like a term (short, capitalized) and might be split
-                else if (currentLine.length < 40 && /^[A-Z]/.test(currentLine) && !currentLine.match(/[.!?]$/)) {
+                if (isTermStart) {
                     let mergedLine = currentLine;
                     i++;
                     
@@ -496,33 +480,25 @@
                     while (i < lines.length) {
                         const nextLine = lines[i].trim();
                         
-                        // Stop conditions:
-                        // - Next line starts with ##
-                        if (nextLine.startsWith('##')) break;
+                        // Stop if next line looks like the start of a definition
+                        if (nextLine.length > 50 || nextLine.match(/[.!?]$/)) {
+                            break;
+                        }
                         
-                        // - Next line is long (likely definition)
-                        if (nextLine.length > 50) break;
-                        
-                        // - Next line ends with punctuation (likely definition)
-                        if (nextLine.match(/[.!?]$/)) break;
-                        
-                        // - Next line looks like a new term (short, capitalized)
-                        if (nextLine.length < 40 && /^[A-Z]/.test(nextLine) && i < lines.length - 1) {
-                            // Check if the line after is long (definition)
+                        // Stop if next line looks like a new term
+                        if (/^[A-Z]/.test(nextLine) && nextLine.length < 50) {
+                            // Check if there's a long line after (definition)
                             if (i + 1 < lines.length && lines[i + 1].length > 50) {
                                 break;
                             }
                         }
                         
-                        // If we get here, this line is probably part of the term
+                        // Otherwise, this is probably part of the term
                         mergedLine += ' ' + nextLine;
                         i++;
                     }
                     merged.push(mergedLine);
-                }
-                
-                // Case 3: Regular line - keep as is
-                else {
+                } else {
                     merged.push(currentLine);
                     i++;
                 }
@@ -532,45 +508,123 @@
         }
         
         function smartParse(lines) {
-            // Try each format in order of specificity
+            const entries = [];
+            let i = 0;
             
-            // Strategy 0: Markdown headers (## Term)
-            const entries0 = parseMarkdownFormat(lines);
-            if (entries0.length > 0) {
-                console.log('Using markdown header format');
-                return entries0;
+            while (i < lines.length) {
+                const currentLine = lines[i].trim();
+                
+                // Skip empty lines
+                if (currentLine.length === 0) {
+                    i++;
+                    continue;
+                }
+                
+                // Check if this line looks like a term:
+                // 1. Starts with capital letter
+                // 2. Not too long (under 60 characters)
+                // 3. Doesn't end with punctuation that suggests it's a definition
+                // 4. Next line exists and is longer (definition)
+                const looksLikeTerm = (
+                    /^[A-Z]/.test(currentLine) &&
+                    currentLine.length < 60 &&
+                    !currentLine.match(/[.!?]$/) &&
+                    i < lines.length - 1 &&
+                    lines[i + 1].length > currentLine.length
+                );
+                
+                if (looksLikeTerm) {
+                    const term = currentLine;
+                    let definition = '';
+                    
+                    // Move to next line (start of definition)
+                    i++;
+                    
+                    // Collect definition lines until we hit another potential term
+                    while (i < lines.length) {
+                        const nextLine = lines[i].trim();
+                        
+                        // Stop if this line looks like a new term
+                        if (/^[A-Z]/.test(nextLine) && 
+                            nextLine.length < 60 && 
+                            !nextLine.match(/[.!?]$/) &&
+                            i < lines.length - 1 &&
+                            lines[i + 1].length > nextLine.length) {
+                            break;
+                        }
+                        
+                        definition += (definition ? ' ' : '') + nextLine;
+                        i++;
+                    }
+                    
+                    entries.push({ term, definition });
+                } else {
+                    // Not a term - might be a continuation or standalone text
+                    // Let's check if it could be a term without a clear definition following
+                    if (/^[A-Z]/.test(currentLine) && currentLine.length < 60) {
+                        // Maybe it's a term with no definition? Add as placeholder
+                        entries.push({ 
+                            term: currentLine, 
+                            definition: '[Definition missing - please edit]' 
+                        });
+                        i++;
+                    } else {
+                        // Skip unrecognized lines
+                        i++;
+                    }
+                }
             }
             
-            // Strategy 1: Term alone on line, definition follows
-            const entries1 = parseSeparateLineFormat(lines);
-            
-            // Strategy 2: Term and definition on same line
-            const entries2 = parseSameLineFormat(lines);
-            
-            // Strategy 3: Term: definition format
-            const entries3 = parseColonFormat(lines);
-            
-            // Strategy 4: Try parsing as separate lines but with better detection
-            const entries4 = parseSmartSeparateLineFormat(lines);
-            
-            // Choose the strategy that found the most complete entries
-            const strategies = [
-                { entries: entries1, name: 'separate line', score: entries1.length },
-                { entries: entries2, name: 'same line', score: entries2.length },
-                { entries: entries3, name: 'colon', score: entries3.length },
-                { entries: entries4, name: 'smart separate', score: entries4.length }
-            ];
-            
-            // Sort by number of entries (most first)
-            strategies.sort((a, b) => b.score - a.score);
-            
-            if (strategies[0].score > 0) {
-                console.log(`Using ${strategies[0].name} format (${strategies[0].score} entries)`);
-                return strategies[0].entries;
+            // If we found no entries, try fallback methods
+            if (entries.length === 0) {
+                return parseFallback(lines);
             }
             
-            // Fallback: create one entry per paragraph
-            return createFallbackEntries(lines);
+            return entries;
+        }
+        
+        // Fallback parser for difficult cases
+        function parseFallback(lines) {
+            const entries = [];
+            let currentTerm = null;
+            let currentDef = [];
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                
+                // Look for patterns like "absolute dating a technique to determine..."
+                // where the term is the first word(s) and the rest is definition
+                const match = line.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(.+)$/);
+                
+                if (match) {
+                    // Found term at start of line
+                    if (currentTerm) {
+                        entries.push({
+                            term: currentTerm,
+                            definition: currentDef.join(' ')
+                        });
+                    }
+                    currentTerm = match[1];
+                    currentDef = [match[2]];
+                } else if (currentTerm) {
+                    currentDef.push(line);
+                } else {
+                    // No current term, maybe this line is a term itself
+                    if (line.length < 50 && /^[A-Z]/.test(line)) {
+                        currentTerm = line;
+                        currentDef = [];
+                    }
+                }
+            }
+            
+            if (currentTerm && currentDef.length > 0) {
+                entries.push({
+                    term: currentTerm,
+                    definition: currentDef.join(' ')
+                });
+            }
+            
+            return entries;
         }
 
         // Parse markdown-style headers (## Term)

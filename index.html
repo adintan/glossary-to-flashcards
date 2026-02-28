@@ -508,17 +508,42 @@
         }
         
         function smartParse(lines) {
-            // First, check if the text has clear line breaks (Format A)
-            const hasClearStructure = detectClearStructure(lines);
+            const entries = [];
+            let i = 0;
             
-            if (hasClearStructure) {
-                console.log('Detected clear line-break structure');
-                return parseStructuredFormat(lines);
+            while (i < lines.length) {
+                // Skip any empty lines at the beginning
+                while (i < lines.length && lines[i].trim() === '') {
+                    i++;
+                }
+                if (i >= lines.length) break;
+                
+                // The current line should be the TERM
+                const term = lines[i].trim();
+                i++;
+                
+                // Skip any empty lines after the term
+                while (i < lines.length && lines[i].trim() === '') {
+                    i++;
+                }
+                
+                // Now collect the DEFINITION (all lines until next blank line)
+                let definitionLines = [];
+                while (i < lines.length && lines[i].trim() !== '') {
+                    definitionLines.push(lines[i].trim());
+                    i++;
+                }
+                
+                // Join the definition lines
+                const definition = definitionLines.join(' ');
+                
+                // Add the entry
+                if (term && definition) {
+                    entries.push({ term, definition });
+                }
             }
             
-            // If no clear structure, try to detect terms within paragraphs (Format B)
-            console.log('No clear structure, trying paragraph parsing');
-            return parseParagraphFormat(lines);
+            return entries;
         }
         
         function detectClearStructure(lines) {
